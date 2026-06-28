@@ -1,0 +1,8 @@
+abicus/apps/*/config/
+abicus/apps/*/data/
+!abicus/apps/*/config/*.example
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+.claude/

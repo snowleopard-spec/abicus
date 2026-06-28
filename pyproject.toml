@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abicus"
+version = "0.1.0"
+description = "Local-only personal-finance dashboard unifying four sub-apps under one FastAPI server."
+requires-python = ">=3.11"
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+include = ["abicus*"]
+
+[tool.setuptools.package-data]
+"abicus" = [
+    "shell/templates/*.html",
+    "shell/static/css/*.css",
+    "shell/static/js/*.js",
+    "shell/static/img/*",
+    "apps/*/templates/*.html",
+    "apps/*/static/*",
+]
