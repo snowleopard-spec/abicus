@@ -3,11 +3,205 @@
 {% block page_title %}My Claims{% endblock %}
 {% block breadcrumb %}Tools / My Claims{% endblock %}
 
+{% block page_actions %}
+<button class="btn btn-ghost" id="toggle-archive-btn">Show archived</button>
+<button class="btn btn-primary" id="new-claim-btn">+ New claim</button>
+{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/claims/static/claims.css">
+{% endblock %}
+
 {% block content %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-state__title">Coming soon</div>
-    <div>The Claims app will be ported in milestone M3.</div>
+<section class="tile-grid" id="tiles">
+  <div class="tile">
+    <span class="tile__label">Total incurred</span>
+    <span class="tile__value" id="tile-incurred">$0</span>
+    <span class="tile__sub" id="tile-incurred-sub"></span>
   </div>
-</div>
+  <div class="tile">
+    <span class="tile__label">Total rebated</span>
+    <span class="tile__value" id="tile-rebated">$0</span>
+    <span class="tile__sub" id="tile-rebated-sub"></span>
+  </div>
+  <div class="tile">
+    <span class="tile__label">Outstanding</span>
+    <span class="tile__value" id="tile-outstanding">$0</span>
+    <span class="tile__sub" id="tile-outstanding-sub"></span>
+  </div>
+  <div class="tile">
+    <span class="tile__label">Claim count</span>
+    <span class="tile__value" id="tile-count">0</span>
+    <span class="tile__sub" id="tile-count-sub"></span>
+  </div>
+</section>
+
+<section class="card" style="margin-top: var(--space-4);">
+  <div class="filter-bar">
+    <div class="field">
+      <label class="field__label" for="filter-from">From</label>
+      <input class="input" type="date" id="filter-from">
+    </div>
+    <div class="field">
+      <label class="field__label" for="filter-to">To</label>
+      <input class="input" type="date" id="filter-to">
+    </div>
+    <div class="field">
+      <label class="field__label" for="filter-claimant">Claimant</label>
+      <select class="select" id="filter-claimant"><option value="">All</option></select>
+    </div>
+    <div class="field">
+      <label class="field__label" for="filter-status">Status</label>
+      <select class="select" id="filter-status">
+        <option value="">All</option>
+        <option value="open">Open (hide Complete/Excluded)</option>
+        <option value="Awaiting invoice">Awaiting invoice</option>
+        <option value="Ready to claim">Ready to claim</option>
+        <option value="Claim submitted">Claim submitted</option>
+        <option value="Complete">Complete</option>
+        <option value="Excluded">Excluded</option>
+        <option value="Check: rebated but not claimed">Anomalies</option>
+      </select>
+    </div>
+    <div class="field" style="flex: 1 1 200px;">
+      <label class="field__label" for="filter-search">Search</label>
+      <input class="input" type="search" id="filter-search" placeholder="Institution or notes…">
+    </div>
+  </div>
+</section>
+
+<section class="table-wrap" style="margin-top: var(--space-4);">
+  <table class="table claims-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Aged</th>
+        <th>Claimant</th>
+        <th>Institution</th>
+        <th class="right">Amount</th>
+        <th title="Invoice received" class="center">Inv</th>
+        <th title="Claim submitted" class="center">Clm</th>
+        <th title="Rebated" class="center">Reb</th>
+        <th title="Excluded" class="center">Exc</th>
+        <th class="right">Rebated</th>
+        <th class="right">Outstanding</th>
+        <th>Status</th>
+        <th>Invoice</th>
+        <th>Other</th>
+        <th class="right">Actions</th>
+      </tr>
+    </thead>
+    <tbody id="claims-tbody"></tbody>
+  </table>
+  <div id="empty-state" class="empty-state hidden">
+    <div class="empty-state__title">No claims match the current filters.</div>
+    <div>Try widening the date range or clearing search.</div>
+  </div>
+</section>
+
+<template id="modal-claim-template">
+  <div class="modal-backdrop">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title" data-role="title">New claim</h2>
+        <button class="btn btn-ghost btn-sm" data-role="close">✕</button>
+      </div>
+      <form class="modal__body" data-role="form">
+        <div class="form-row">
+          <div class="field">
+            <label class="field__label">Claimant</label>
+            <select class="select" name="claimant" data-role="claimant" required></select>
+          </div>
+          <div class="field">
+            <label class="field__label">Date incurred</label>
+            <input class="input" type="date" name="date_incurred" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label class="field__label">Institution</label>
+            <select class="select" name="institution" data-role="institution" required></select>
+          </div>
+          <div class="field">
+            <label class="field__label">Amount</label>
+            <input class="input" type="number" step="0.01" name="amount" required>
+          </div>
+          <div class="field">
+            <label class="field__label">Currency</label>
+            <input class="input" name="currency" value="SGD">
+          </div>
+        </div>
+        <div class="form-row">
+          <label class="check-pill"><input type="checkbox" name="invoice_received"> Invoice received</label>
+          <label class="check-pill"><input type="checkbox" name="claimed"> Claimed</label>
+          <label class="check-pill"><input type="checkbox" name="rebated" data-role="rebated-cb"> Rebated</label>
+          <label class="check-pill"><input type="checkbox" name="excluded"> Excluded</label>
+        </div>
+        <div class="field hidden" data-role="rebated-amount-field">
+          <label class="field__label">Amount rebated</label>
+          <input class="input" type="number" step="0.01" name="amount_rebated" value="0">
+        </div>
+        <div class="field">
+          <label class="field__label">Invoice file (optional)</label>
+          <input class="input" type="file" name="invoice" accept=".pdf,.png,.jpg,.jpeg,.heic,.webp">
+        </div>
+        <div class="field">
+          <label class="field__label">Notes</label>
+          <textarea class="input" name="notes" rows="3"></textarea>
+        </div>
+      </form>
+      <div class="modal__footer">
+        <button class="btn" data-role="cancel">Cancel</button>
+        <button class="btn btn-primary" data-role="save">Save</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template id="modal-add-institution-template">
+  <div class="modal-backdrop">
+    <div class="modal" style="width: 380px;">
+      <div class="modal__header">
+        <h2 class="modal__title">Add institution</h2>
+        <button class="btn btn-ghost btn-sm" data-role="close">✕</button>
+      </div>
+      <div class="modal__body">
+        <div class="field">
+          <label class="field__label">Institution name</label>
+          <input class="input" data-role="name" placeholder="e.g. Mount Elizabeth Hospital">
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn" data-role="cancel">Cancel</button>
+        <button class="btn btn-primary" data-role="save">Add</button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<template id="modal-other-docs-template">
+  <div class="modal-backdrop">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Attached documents</h2>
+        <button class="btn btn-ghost btn-sm" data-role="close">✕</button>
+      </div>
+      <div class="modal__body">
+        <ul class="other-docs-list" data-role="list"></ul>
+        <div class="field">
+          <label class="field__label">Upload a new document</label>
+          <input class="input" type="file" data-role="file">
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn" data-role="cancel">Close</button>
+        <button class="btn btn-primary" data-role="upload">Upload</button>
+      </div>
+    </div>
+  </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script src="/claims/static/claims.js"></script>
 {% endblock %}

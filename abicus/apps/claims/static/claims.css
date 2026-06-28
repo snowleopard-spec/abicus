@@ -1,0 +1,95 @@
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.claims-table th.center,
+.claims-table td.center {
+  text-align: center;
+  width: 36px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.claims-table .toggle-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13px;
+  transition: background 80ms, color 80ms, border-color 80ms;
+}
+.claims-table .toggle-dot.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.claims-table .toggle-dot:hover { border-color: var(--accent); }
+
+.claims-table td.amount, .claims-table th.right {
+  font-variant-numeric: tabular-nums;
+}
+.claims-table tr.row-await    { background: #fef2f2; }
+.claims-table tr.row-await:hover    { background: #fde8e8; }
+.claims-table tr.row-ready    { background: #fffbeb; }
+.claims-table tr.row-claim    { background: #f0fdf4; }
+.claims-table tr.row-done     { background: #ecfdf5; }
+.claims-table tr.row-warn     { background: #b42318; color: #fff; }
+.claims-table tr.row-warn .tag { background: rgba(255,255,255,0.18); color: #fff; }
+.claims-table tr.row-warn a   { color: #fff; text-decoration: underline; }
+.claims-table tr.row-warn .toggle-dot { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.30); color: #fff; }
+.claims-table tr.row-warn .toggle-dot.on { background: #fff; color: var(--danger); }
+.claims-table tr.row-excluded { background: #f3f4f6; color: var(--text-muted); }
+.claims-table tr.row-excluded .tag { opacity: 0.8; }
+
+.claims-table .row-actions {
+  display: inline-flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.claims-table td.invoice a {
+  font-size: var(--text-xs);
+}
+
+.check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+}
+.check-pill input { margin: 0; }
+
+.other-docs-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--space-3) 0;
+}
+.other-docs-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  background: var(--bg-card);
+  font-size: var(--text-sm);
+}
+.other-docs-list li .actions { display: inline-flex; gap: 6px; }
+
+.aged-cell { color: var(--text-secondary); font-size: var(--text-xs); }
+.muted-dash { color: var(--text-muted); }
