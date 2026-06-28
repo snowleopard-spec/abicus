@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Abicus{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="/shell/static/img/favicon.svg">
+  <link rel="stylesheet" href="/shell/static/css/tokens.css">
+  <link rel="stylesheet" href="/shell/static/css/shell.css">
+  <link rel="stylesheet" href="/shell/static/css/components.css">
+  {% block head %}{% endblock %}
+</head>
+<body data-active="{{ active }}">
+  {% include "_sidebar.html" %}
+  <main class="content">
+    <header class="page-header">
+      <div class="page-header__title">
+        <div class="breadcrumb">{% block breadcrumb %}{% endblock %}</div>
+        <h1>{% block page_title %}{% endblock %}</h1>
+      </div>
+      <div class="page-actions">
+        {% block page_actions %}{% endblock %}
+        <span class="version-chip" title="Abicus build">{{ version }}</span>
+      </div>
+    </header>
+    <section class="page-body">
+      {% block content %}{% endblock %}
+    </section>
+  </main>
+  <div id="toasts" class="toasts"></div>
+  <script src="/shell/static/js/api.js"></script>
+  <script src="/shell/static/js/shell.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
