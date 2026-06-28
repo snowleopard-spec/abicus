@@ -3,11 +3,83 @@
 {% block page_title %}My Outflows{% endblock %}
 {% block breadcrumb %}Tools / My Outflows{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/css/tabulator.min.css">
+<link rel="stylesheet" href="/outflows/static/outflows.css">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/js/tabulator.min.js"></script>
+{% endblock %}
+
 {% block content %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-state__title">Coming soon</div>
-    <div>The Outflows app will be ported in milestone M4.</div>
+<section class="card">
+  <div class="card__header"><h2 class="card__title">1. Choose source files</h2></div>
+  <div class="dropzone" id="dropzone">
+    <strong>Drag &amp; drop CSV / XLSX files here</strong>
+    <div class="muted" style="margin-top:6px;">or <button type="button" class="btn btn-ghost btn-sm" id="browse-btn">Browse files</button></div>
+    <input type="file" id="file-input" multiple accept=".csv,.xls,.xlsx" hidden>
   </div>
-</div>
+  <ul id="file-list" class="file-list"></ul>
+  <div class="row" style="margin-top: var(--space-3); justify-content: flex-end;">
+    <button class="btn btn-primary" id="compile-btn" disabled>Compile</button>
+  </div>
+</section>
+
+<section id="results" class="hidden" style="margin-top: var(--space-4);">
+  <div id="warnings" class="col" style="gap: var(--space-3);"></div>
+
+  <section class="card" style="margin-top: var(--space-4);">
+    <div class="card__header">
+      <h2 class="card__title">2. Date range</h2>
+      <span class="card__subtitle" id="row-count"></span>
+    </div>
+    <div class="form-row">
+      <div class="field">
+        <label class="field__label" for="date-from">From</label>
+        <input class="input" type="date" id="date-from">
+      </div>
+      <div class="field">
+        <label class="field__label" for="date-to">To</label>
+        <input class="input" type="date" id="date-to">
+      </div>
+    </div>
+  </section>
+
+  <section class="tile-grid" style="margin-top: var(--space-4);">
+    <div class="tile"><span class="tile__label">Total spend</span><span class="tile__value" id="tile-total">$0</span><span class="tile__sub" id="tile-total-sub"></span></div>
+    <div class="tile"><span class="tile__label">Transactions</span><span class="tile__value" id="tile-txns">0</span><span class="tile__sub" id="tile-txns-sub"></span></div>
+    <div class="tile"><span class="tile__label">Unmapped</span><span class="tile__value" id="tile-unmapped">0</span><span class="tile__sub" id="tile-unmapped-sub"></span></div>
+    <div class="tile"><span class="tile__label">Dropped (refunds)</span><span class="tile__value" id="tile-dropped">0</span><span class="tile__sub" id="tile-dropped-sub"></span></div>
+  </section>
+
+  <section class="card" style="margin-top: var(--space-4);">
+    <div class="card__header"><h2 class="card__title">Category breakdown</h2></div>
+    <div id="chart" style="height: 360px;"></div>
+  </section>
+
+  <section class="card" style="margin-top: var(--space-4);">
+    <div class="card__header">
+      <h2 class="card__title">Categorised transactions</h2>
+      <div class="row">
+        <select class="select" id="filter-category"><option value="">All categories</option></select>
+        <select class="select" id="filter-account"><option value="">All accounts</option></select>
+      </div>
+    </div>
+    <div id="transactions-table"></div>
+  </section>
+
+  <section class="card" style="margin-top: var(--space-4);">
+    <div class="card__header"><h2 class="card__title">3. Downloads</h2></div>
+    <div class="row" style="flex-wrap: wrap; gap: var(--space-3);">
+      <button class="btn" id="dl-categorised">⬇ Categorised (.xlsx)</button>
+      <button class="btn" id="dl-unmapped">⬇ Unmapped (.xlsx)</button>
+      <button class="btn" id="dl-html">⬇ HTML snapshot</button>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" id="append-history">Append unmapped to history</button>
+    </div>
+  </section>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/outflows/static/outflows.js"></script>
 {% endblock %}

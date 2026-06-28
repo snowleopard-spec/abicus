@@ -1,0 +1,78 @@
+.file-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.file-list li {
+  display: grid;
+  grid-template-columns: 1fr minmax(180px, 220px) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+.file-list li .filename {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-list li .file-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+}
+.file-list li .file-remove:hover { color: var(--danger); }
+
+.warning-card {
+  border-left: 3px solid var(--warning);
+  background: var(--warning-soft);
+}
+.warning-card .warning-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+  max-height: 240px;
+  overflow-y: auto;
+}
+.warning-card .warning-list li { padding: 2px 0; }
+.warning-card details summary {
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--warning);
+}
+
+/* Tabulator visual harmony with our tokens */
+.tabulator {
+  border: none !important;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+}
+.tabulator .tabulator-header {
+  background: var(--bg-app) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.tabulator .tabulator-header .tabulator-col {
+  background: transparent !important;
+  border-right: none !important;
+  color: var(--text-muted) !important;
+  font-weight: 600;
+  font-size: var(--text-xs) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tabulator .tabulator-row {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+.tabulator .tabulator-row.tabulator-row-even { background: var(--bg-app); }
+.tabulator .tabulator-row:hover { background: var(--bg-hover) !important; }
