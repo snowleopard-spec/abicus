@@ -1,0 +1,3 @@
+-r requirements.txt
+pytest>=8.0
+httpx2>=0.1  # required by Starlette's TestClient in this version
