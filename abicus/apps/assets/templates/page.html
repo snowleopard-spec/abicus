@@ -3,11 +3,102 @@
 {% block page_title %}My Assets{% endblock %}
 {% block breadcrumb %}Tools / My Assets{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/css/tabulator.min.css">
+<link rel="stylesheet" href="/assets/static/assets.css">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/js/tabulator.min.js"></script>
+{% endblock %}
+
+{% block page_actions %}
+<button class="btn" id="load-last-btn" disabled>Load last</button>
+{% endblock %}
+
 {% block content %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-state__title">Coming soon</div>
-    <div>The Assets app will be ported in milestone M5.</div>
+<section class="card">
+  <div class="card__header">
+    <h2 class="card__title">1. Choose source files</h2>
+    <span class="card__subtitle" id="saved-meta"></span>
   </div>
-</div>
+  <div class="dropzone" id="dropzone">
+    <strong>Drag &amp; drop broker statements here</strong>
+    <div class="muted" style="margin-top:6px;">or <button type="button" class="btn btn-ghost btn-sm" id="browse-btn">Browse files</button></div>
+    <input type="file" id="file-input" multiple hidden>
+  </div>
+  <ul id="file-list" class="file-list"></ul>
+  <div class="row" style="margin-top: var(--space-3); justify-content: flex-end; gap: var(--space-2);">
+    <button class="btn btn-primary" id="compile-btn" disabled>Compile</button>
+  </div>
+</section>
+
+<section id="results" class="hidden" style="margin-top: var(--space-4);">
+  <div id="banners" class="col" style="gap: var(--space-3);"></div>
+
+  <section class="tile-grid" style="margin-top: var(--space-4);">
+    <div class="tile" style="grid-column: span 2;">
+      <span class="tile__label">Total portfolio (USD)</span>
+      <span class="tile__value" id="tile-total">$0</span>
+      <span class="tile__sub" id="tile-total-sub"></span>
+    </div>
+    <div class="tile">
+      <span class="tile__label">Holdings</span>
+      <span class="tile__value" id="tile-count">0</span>
+      <span class="tile__sub" id="tile-count-sub"></span>
+    </div>
+    <div class="tile">
+      <span class="tile__label">FX status</span>
+      <span class="tile__value" id="tile-fx">live</span>
+      <span class="tile__sub" id="tile-fx-sub"></span>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top: var(--space-4);">
+    <div class="card__header">
+      <h2 class="card__title">Holdings</h2>
+      <div class="row">
+        <label class="check-pill"><input type="checkbox" id="opt-hide-balances"> Hide balances</label>
+        <label class="check-pill"><input type="checkbox" id="opt-lookthrough"> Lookthrough</label>
+      </div>
+    </div>
+    <div id="holdings-table"></div>
+  </section>
+
+  <section class="card-grid" id="alloc-charts" style="margin-top: var(--space-4);"></section>
+
+  <section class="card" id="unmapped-card" style="margin-top: var(--space-4); display: none;">
+    <div class="card__header"><h2 class="card__title">Unmapped instruments</h2></div>
+    <div id="unmapped-body"></div>
+    <div class="row" style="margin-top: var(--space-3); justify-content: flex-end;">
+      <button class="btn btn-primary" id="add-unmapped-btn">Auto-add to mappings</button>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top: var(--space-4);">
+    <div class="card__header"><h2 class="card__title">Downloads</h2></div>
+    <div class="row" style="gap: var(--space-3); flex-wrap: wrap;">
+      <button class="btn" id="dl-pdf">⬇ PDF report</button>
+      <button class="btn" id="dl-excel">⬇ Excel (.xlsx)</button>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" id="save-btn">Save snapshot</button>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top: var(--space-4);">
+    <div class="card__header"><h2 class="card__title">Reference data</h2></div>
+    <div class="form-row">
+      <div>
+        <strong>FX rates</strong>
+        <table class="ref-table" id="fx-table"></table>
+      </div>
+      <div>
+        <strong>Stock prices</strong>
+        <table class="ref-table" id="prices-table"></table>
+      </div>
+    </div>
+  </section>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/assets/static/assets.js"></script>
 {% endblock %}

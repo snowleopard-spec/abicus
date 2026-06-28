@@ -1,0 +1,129 @@
+.file-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-3) 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.file-list li {
+  display: grid;
+  grid-template-columns: 1fr minmax(180px, 220px) auto;
+  gap: var(--space-3);
+  align-items: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+}
+.file-list li .filename {
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-list li .file-remove {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+}
+.file-list li .file-remove:hover { color: var(--danger); }
+
+.banner-warning {
+  border-left: 3px solid var(--warning);
+  background: var(--warning-soft);
+}
+.banner-error {
+  border-left: 3px solid var(--danger);
+  background: var(--danger-soft);
+}
+.banner-info {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.alloc-chart .chart-bar {
+  display: flex;
+  width: 100%;
+  height: 18px;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: var(--space-2) 0 var(--space-3) 0;
+  background: var(--bg-app);
+}
+.alloc-chart .chart-bar .seg {
+  height: 100%;
+  display: inline-block;
+}
+.alloc-chart table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.alloc-chart table td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.alloc-chart table td.swatch {
+  width: 14px;
+  padding: 0;
+}
+.alloc-chart table td.label { color: var(--text-primary); }
+.alloc-chart table td.amount, .alloc-chart table td.pct {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.alloc-chart table tr.total td {
+  border-top: 1px solid var(--border-strong);
+  border-bottom: none;
+  font-weight: 600;
+}
+
+.ref-table {
+  width: 100%;
+  font-size: var(--text-sm);
+  border-collapse: collapse;
+  margin-top: var(--space-2);
+}
+.ref-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.ref-table td:last-child { text-align: right; }
+
+.check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+}
+.check-pill input { margin: 0; }
+
+/* Tabulator harmony */
+.tabulator { border: none !important; font-family: var(--font-sans); font-size: var(--text-sm); }
+.tabulator .tabulator-header {
+  background: var(--bg-app) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.tabulator .tabulator-header .tabulator-col {
+  background: transparent !important;
+  border-right: none !important;
+  color: var(--text-muted) !important;
+  font-weight: 600;
+  font-size: var(--text-xs) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tabulator .tabulator-row { background: var(--bg-card); border-bottom: 1px solid var(--border); }
+.tabulator .tabulator-row.tabulator-row-even { background: var(--bg-app); }
+.tabulator .tabulator-row:hover { background: var(--bg-hover) !important; }
