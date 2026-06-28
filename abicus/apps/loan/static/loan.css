@@ -1,0 +1,41 @@
+.kv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.kv-table td {
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.kv-table td:first-child {
+  color: var(--text-muted);
+  width: 50%;
+}
+.kv-table td:last-child {
+  text-align: right;
+  color: var(--text-primary);
+}
+.kv-table tr:last-child td { border-bottom: none; }
+
+#last-table.is-collapsed { display: none; }
+
+/* Tabulator harmony */
+.tabulator { border: none !important; font-family: var(--font-sans); font-size: var(--text-sm); }
+.tabulator .tabulator-header {
+  background: var(--bg-app) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.tabulator .tabulator-header .tabulator-col {
+  background: transparent !important;
+  border-right: none !important;
+  color: var(--text-muted) !important;
+  font-weight: 600;
+  font-size: var(--text-xs) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tabulator .tabulator-row { background: var(--bg-card); border-bottom: 1px solid var(--border); }
+.tabulator .tabulator-row.tabulator-row-even { background: var(--bg-app); }
+.tabulator .tabulator-row:hover { background: var(--bg-hover) !important; }
+.tabulator .tabulator-row.row-future { color: var(--text-muted); }

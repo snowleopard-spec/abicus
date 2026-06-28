@@ -3,11 +3,119 @@
 {% block page_title %}My Loan{% endblock %}
 {% block breadcrumb %}Tools / My Loan{% endblock %}
 
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/css/tabulator.min.css">
+<link rel="stylesheet" href="/loan/static/loan.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/js/tabulator.min.js"></script>
+{% endblock %}
+
+{% block page_actions %}
+<input class="input" type="date" id="as-of-picker" style="width: 150px;">
+<button class="btn" id="edit-loan-btn">Edit loan</button>
+{% endblock %}
+
 {% block content %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-state__title">Coming soon</div>
-    <div>The Loan app will be built in milestone M6.</div>
+<section class="tile-grid" id="tiles">
+  <div class="tile">
+    <span class="tile__label">Outstanding principal</span>
+    <span class="tile__value" id="tile-principal">—</span>
+    <span class="tile__sub" id="tile-principal-sub"></span>
   </div>
-</div>
+  <div class="tile">
+    <span class="tile__label">Accrued interest</span>
+    <span class="tile__value" id="tile-accrued">—</span>
+    <span class="tile__sub" id="tile-accrued-sub"></span>
+  </div>
+  <div class="tile">
+    <span class="tile__label">Next payment</span>
+    <span class="tile__value" id="tile-next">—</span>
+    <span class="tile__sub" id="tile-next-sub"></span>
+  </div>
+  <div class="tile">
+    <span class="tile__label">Days since last payment</span>
+    <span class="tile__value" id="tile-days">—</span>
+    <span class="tile__sub" id="tile-days-sub"></span>
+  </div>
+</section>
+
+<section class="card-grid" style="margin-top: var(--space-4);">
+  <div class="card">
+    <div class="card__header"><h2 class="card__title">Loan terms</h2></div>
+    <table class="kv-table" id="terms-table"></table>
+  </div>
+  <div class="card">
+    <div class="card__header">
+      <h2 class="card__title">Last paid installment</h2>
+      <button class="btn btn-ghost btn-sm" id="toggle-last">Hide</button>
+    </div>
+    <table class="kv-table" id="last-table"></table>
+  </div>
+</section>
+
+<section class="card" style="margin-top: var(--space-4);">
+  <div class="card__header">
+    <h2 class="card__title">Amortisation schedule</h2>
+    <span class="card__subtitle" id="schedule-summary"></span>
+  </div>
+  <div id="schedule-table"></div>
+</section>
+
+<template id="modal-edit-template">
+  <div class="modal-backdrop">
+    <div class="modal">
+      <div class="modal__header">
+        <h2 class="modal__title">Edit loan</h2>
+        <button class="btn btn-ghost btn-sm" data-role="close">✕</button>
+      </div>
+      <form class="modal__body" data-role="form">
+        <div class="form-row">
+          <div class="field">
+            <label class="field__label">Origin date</label>
+            <input class="input" type="date" name="origin_date" required>
+          </div>
+          <div class="field">
+            <label class="field__label">Maturity date</label>
+            <input class="input" type="date" name="maturity_date" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label class="field__label">Origin principal</label>
+            <input class="input" type="text" name="origin_principal" required inputmode="decimal">
+          </div>
+          <div class="field">
+            <label class="field__label">Monthly payment</label>
+            <input class="input" type="text" name="monthly_payment" required inputmode="decimal">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label class="field__label">Annual rate (decimal)</label>
+            <input class="input" type="text" name="annual_rate" required inputmode="decimal" placeholder="0.0255">
+          </div>
+          <div class="field">
+            <label class="field__label">Tenor (months)</label>
+            <input class="input" type="number" name="original_tenor_months" required min="1">
+          </div>
+          <div class="field">
+            <label class="field__label">Payment day</label>
+            <input class="input" type="number" name="payment_day_of_month" required min="1" max="28">
+          </div>
+          <div class="field">
+            <label class="field__label">Currency</label>
+            <input class="input" name="currency" required>
+          </div>
+        </div>
+      </form>
+      <div class="modal__footer">
+        <button class="btn" data-role="cancel">Cancel</button>
+        <button class="btn btn-primary" data-role="save">Save</button>
+      </div>
+    </div>
+  </div>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script src="/loan/static/loan.js"></script>
 {% endblock %}
