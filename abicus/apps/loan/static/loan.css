@@ -1,3 +1,27 @@
+/* ---------- Loan theme — editorial navy / Iowan ---------- */
+body[data-active="loan"] {
+  --bg-app: #F4F2EC;
+  --bg-sidebar: #FBFAF6;
+  --bg-card: #FBFAF6;
+  --bg-hover: #ECE9E1;
+  --bg-active: #E0EAF3;
+  --border: #DDD9CF;
+  --border-strong: #C3BDA9;
+  --text-primary: #1F2A24;
+  --text-secondary: #4A544E;
+  --text-muted: #6B7670;
+  --accent: #2C5D8A;
+  --accent-hover: #234A6F;
+  --accent-soft: #E0EAF3;
+  --success: #2F6F5B;
+  --success-soft: #E3EFE9;
+  --warning: #B07A1E;
+  --warning-soft: #F6ECD6;
+  --danger: #A4453A;
+  --danger-soft: #F5E5E2;
+  --font-sans: "Iowan Old Style", "Iowan Old Style W04", Georgia, "Times New Roman", serif;
+  --font-display: var(--font-sans);
+}
 .kv-table {
   width: 100%;
   border-collapse: collapse;

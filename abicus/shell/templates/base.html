@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Abicus{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="/shell/static/img/favicon.svg">
-  <link rel="stylesheet" href="/shell/static/css/tokens.css">
-  <link rel="stylesheet" href="/shell/static/css/shell.css">
-  <link rel="stylesheet" href="/shell/static/css/components.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+Pro:wght@300;400;600;700&display=swap">
+  <link rel="stylesheet" href="/shell/static/css/tokens.css?v={{ asset_v }}">
+  <link rel="stylesheet" href="/shell/static/css/shell.css?v={{ asset_v }}">
+  <link rel="stylesheet" href="/shell/static/css/components.css?v={{ asset_v }}">
   {% block head %}{% endblock %}
 </head>
 <body data-active="{{ active }}">
@@ -28,8 +31,8 @@
     </section>
   </main>
   <div id="toasts" class="toasts"></div>
-  <script src="/shell/static/js/api.js"></script>
-  <script src="/shell/static/js/shell.js"></script>
+  <script src="/shell/static/js/api.js?v={{ asset_v }}"></script>
+  <script src="/shell/static/js/shell.js?v={{ asset_v }}"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

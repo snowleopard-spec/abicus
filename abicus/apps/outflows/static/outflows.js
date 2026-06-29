@@ -1,310 +1,555 @@
 (() => {
   const state = {
-    config: { accounts: [], categories: [], excluded: [] },
-    files: [],      // [{file: File, account: string}]
-    session: null,  // {session_id, rows, mapping_warnings, history_warnings, ...}
-    range: { from: null, to: null },
-    lastAccount: null,
-    tabulator: null,
+    config: null,                                  // {accounts, categories, excluded}
+    files: [],                                     // [{file: File, id, account}]
+    nextFileId: 1,
+    session: null,                                 // /api/outflows/compile payload
+    dateRange: { from: null, to: null },
+    tableFilter: { category: "All", account: "All" },
+    table: null,
+    scoped: null,                                  // {rows, dedup, dashboardRows}
   };
 
-  const fmtSgd = (n) => new Intl.NumberFormat("en-SG", {
-    style: "currency", currency: "SGD", maximumFractionDigits: 0,
-  }).format(n || 0);
-  const fmtPct = (n) => `${(n * 100).toFixed(1)}%`;
+  // Original earthy chart palette with rust reserved for "Uncategorised".
+  const PALETTE = [
+    "#8B7355", "#6B8E23", "#8B6F47", "#5C7A5C", "#A0826D",
+    "#7B6F5C", "#9B7E5A", "#6B5D4F", "#A89070", "#5D6B4E",
+  ];
+  const UNCAT_COLOUR = "#C77B4F";
+  const UNCAT = "Uncategorised";
 
-  // ---------- boot ----------
+  const fmtSGD = new Intl.NumberFormat("en-SG", {
+    style: "currency", currency: "SGD", minimumFractionDigits: 2,
+  });
 
+  const $ = (id) => document.getElementById(id);
+  const show = (el) => el.classList.remove("hidden");
+  const hide = (el) => el.classList.add("hidden");
+
+  // ---- Boot ----
   async function boot() {
     try {
       state.config = await api.get("/api/outflows/config");
-    } catch (e) { return; }
+    } catch (err) {
+      const el = $("config-error");
+      el.textContent = `Configuration error: ${err.message}`;
+      show(el);
+      return;
+    }
     wireDropzone();
     wireCompile();
-    wireRange();
+    wireDateRange();
+    wireTableFilters();
     wireDownloads();
   }
 
-  // ---------- file list / dropzone ----------
-
+  // ---- Dropzone / file list ----
   function wireDropzone() {
-    const dz = document.getElementById("dropzone");
-    const input = document.getElementById("file-input");
-    document.getElementById("browse-btn").addEventListener("click", () => input.click());
-    dz.addEventListener("click", (e) => {
-      if (e.target.id === "browse-btn") return;
-      input.click();
-    });
-    input.addEventListener("change", () => {
-      addFiles(input.files);
-      input.value = "";
-    });
-    ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, (e) => {
+    const dz = $("dropzone");
+    const input = $("file-input");
+    $("browse-btn").addEventListener("click", (e) => { e.stopPropagation(); input.click(); });
+    dz.addEventListener("click", (e) => { if (e.target.id !== "browse-btn") input.click(); });
+    input.addEventListener("change", () => { addFiles(Array.from(input.files)); input.value = ""; });
+    ["dragenter","dragover"].forEach((ev) => dz.addEventListener(ev, (e) => {
       e.preventDefault(); dz.classList.add("is-drag");
     }));
-    ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, (e) => {
+    ["dragleave","drop"].forEach((ev) => dz.addEventListener(ev, (e) => {
       e.preventDefault(); dz.classList.remove("is-drag");
     }));
-    dz.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+    dz.addEventListener("drop", (e) => addFiles(Array.from(e.dataTransfer.files)));
   }
 
   function addFiles(fileList) {
-    for (const f of fileList) {
-      state.files.push({
-        file: f,
-        account: state.lastAccount || (state.config.accounts[0] && state.config.accounts[0].name) || "",
-      });
+    if (!fileList.length) return;
+    const accountNames = state.config.accounts.map((a) => a.name);
+    const lastAccount = state.files.length
+      ? state.files[state.files.length - 1].account
+      : accountNames[0];
+    for (const file of fileList) {
+      state.files.push({ file, id: `f${state.nextFileId++}`, account: lastAccount });
     }
     renderFileList();
   }
 
+  function removeFile(id) {
+    state.files = state.files.filter((f) => f.id !== id);
+    renderFileList();
+  }
+
   function renderFileList() {
-    const ul = document.getElementById("file-list");
-    ul.innerHTML = state.files.map((entry, i) => `
-      <li>
-        <span class="filename" title="${entry.file.name}">${entry.file.name}</span>
-        <select class="select file-account" data-i="${i}">
-          ${state.config.accounts.map(a => `<option value="${a.name}" ${a.name === entry.account ? "selected" : ""}>${a.name} (${a.format})</option>`).join("")}
-        </select>
-        <button class="file-remove" data-i="${i}" title="Remove">✕</button>
-      </li>
-    `).join("");
-    ul.querySelectorAll(".file-account").forEach(sel => {
-      sel.addEventListener("change", (e) => {
-        const i = Number(e.target.dataset.i);
-        state.files[i].account = e.target.value;
-        state.lastAccount = e.target.value;
-      });
-    });
-    ul.querySelectorAll(".file-remove").forEach(btn => {
-      btn.addEventListener("click", (e) => {
-        state.files.splice(Number(e.currentTarget.dataset.i), 1);
-        renderFileList();
-      });
-    });
-    document.getElementById("compile-btn").disabled = state.files.length === 0;
-  }
+    const wrap = $("file-list");
+    const rows = $("file-rows");
+    rows.innerHTML = "";
+    if (state.files.length === 0) {
+      hide(wrap);
+      $("compile-btn").disabled = true;
+      return;
+    }
+    show(wrap);
+    $("compile-btn").disabled = false;
 
-  // ---------- compile ----------
+    const accountNames = state.config.accounts.map((a) => a.name);
+    for (const f of state.files) {
+      const row = document.createElement("div");
+      row.className = "file-row";
 
-  function wireCompile() {
-    document.getElementById("compile-btn").addEventListener("click", async () => {
-      if (state.files.length === 0) return;
-      const btn = document.getElementById("compile-btn");
-      btn.disabled = true; btn.textContent = "Compiling…";
-      try {
-        const fd = new FormData();
-        state.files.forEach(entry => {
-          fd.append("files", entry.file, entry.file.name);
-          fd.append("accounts", entry.account);
-        });
-        state.session = await api.postForm("/api/outflows/compile", fd);
-        seedDateRange();
-        renderAll();
-        document.getElementById("results").classList.remove("hidden");
-        toast(`Compiled ${state.session.rows.length} transactions`, "ok");
-      } catch (e) {
-        // toast already shown
-      } finally {
-        btn.disabled = false; btn.textContent = "Compile";
+      const name = document.createElement("div");
+      name.className = "file-row-name";
+      name.textContent = `📄 ${f.file.name}`;
+      row.appendChild(name);
+
+      const select = document.createElement("select");
+      for (const acct of accountNames) {
+        const opt = document.createElement("option");
+        opt.value = acct; opt.textContent = acct;
+        if (acct === f.account) opt.selected = true;
+        select.appendChild(opt);
       }
-    });
+      select.addEventListener("change", () => { f.account = select.value; });
+      row.appendChild(select);
+
+      const rm = document.createElement("button");
+      rm.className = "remove-btn"; rm.type = "button"; rm.textContent = "×"; rm.title = "Remove file";
+      rm.addEventListener("click", () => removeFile(f.id));
+      row.appendChild(rm);
+
+      rows.appendChild(row);
+    }
   }
 
-  function seedDateRange() {
-    const dates = state.session.rows.map(r => r.date).filter(Boolean).sort();
-    const from = dates[0] || new Date().toISOString().slice(0, 10);
-    const to = dates[dates.length - 1] || new Date().toISOString().slice(0, 10);
-    document.getElementById("date-from").value = from;
-    document.getElementById("date-to").value = to;
-    state.range.from = from; state.range.to = to;
+  // ---- Compile ----
+  function wireCompile() { $("compile-btn").addEventListener("click", compile); }
+
+  async function compile() {
+    const btn = $("compile-btn");
+    const errEl = $("compile-error");
+    const statusEl = $("compile-status");
+    hide(errEl);
+    statusEl.textContent = "Parsing and categorising…";
+    show(statusEl);
+    btn.disabled = true;
+
+    const form = new FormData();
+    for (const f of state.files) {
+      form.append("files", f.file, f.file.name);
+      form.append("accounts", f.account);
+    }
+    try {
+      state.session = await api.postForm("/api/outflows/compile", form);
+      hide(statusEl);
+      renderResults();
+    } catch (err) {
+      hide(statusEl);
+      errEl.textContent = String(err.message || err);
+      show(errEl);
+    } finally {
+      btn.disabled = state.files.length === 0;
+    }
   }
 
-  function wireRange() {
-    document.getElementById("date-from").addEventListener("change", (e) => {
-      state.range.from = e.target.value; renderAll();
-    });
-    document.getElementById("date-to").addEventListener("change", (e) => {
-      state.range.to = e.target.value; renderAll();
-    });
-  }
-
-  // ---------- view computation ----------
-
-  function scopedRows() {
-    if (!state.session) return [];
-    const excluded = new Set(state.config.excluded || []);
-    return state.session.rows.filter(r => {
-      if (state.range.from && r.date < state.range.from) return false;
-      if (state.range.to && r.date > state.range.to) return false;
-      if (r.duplicate) return false;
-      if (excluded.has(r.category)) return false;
-      return true;
-    });
-  }
-
-  function unmappedRows() {
-    if (!state.session) return [];
-    return state.session.rows.filter(r => {
-      if (state.range.from && r.date < state.range.from) return false;
-      if (state.range.to && r.date > state.range.to) return false;
-      if (r.duplicate) return false;
-      return r.category === "Uncategorised";
-    });
-  }
-
-  // ---------- render ----------
-
-  function renderAll() {
-    renderWarnings();
-    const rows = scopedRows();
-    renderTiles(rows);
-    renderChart(rows);
-    renderFilters();
-    renderTable(rows);
-    document.getElementById("row-count").textContent = `${rows.length} in range`;
-  }
-
-  function renderWarnings() {
-    const root = document.getElementById("warnings");
-    if (!state.session) { root.innerHTML = ""; return; }
-    const parts = [];
+  // ---- Results ----
+  function renderResults() {
+    show($("results"));
     const s = state.session;
+
+    // Mapping status caption
+    const ms = $("mapping-status");
     if (s.mapping_status) {
-      parts.push(`<div class="card"><div class="muted">Mapping: ${s.mapping_status.n_rules} rules${s.mapping_status.rebuilt ? " (just rebuilt from xlsx)" : ""}</div></div>`);
-    }
+      ms.textContent = s.mapping_status.rebuilt
+        ? `Rebuilt mapping.json (${s.mapping_status.n_rules} rules)`
+        : `mapping.json unchanged (${s.mapping_status.n_rules} rules)`;
+      show(ms);
+    } else hide(ms);
+
+    renderWarnings(
+      s.mapping_warnings,
+      "mapping-warnings-panel", "mapping-warnings-summary", "mapping-warnings-list",
+      (n) => `ℹ️ ${n} mapping-table note${n !== 1 ? "s" : ""}`
+    );
+    renderWarnings(
+      s.history_warnings,
+      "history-warnings-panel", "history-warnings-summary", "history-warnings-list",
+      (n) => `⚠️ ${n} invalid categor${n === 1 ? "y" : "ies"} in transaction_history.xlsx`
+    );
+
+    const uaEl = $("unfamiliar-accounts");
     if (s.unfamiliar_accounts && s.unfamiliar_accounts.length) {
-      parts.push(`<div class="card warning-card"><strong>Unfamiliar accounts:</strong> ${s.unfamiliar_accounts.join(", ")}</div>`);
+      uaEl.textContent =
+        `Accounts in uploaded file(s) that aren't in accounts.yaml: ` +
+        `${s.unfamiliar_accounts.join(", ")}. Transactions kept; ` +
+        `these will appear in the Account filter as new options.`;
+      show(uaEl);
+    } else hide(uaEl);
+
+    const dates = s.rows.map((r) => r.date).filter(Boolean).sort();
+    if (dates.length === 0) {
+      $("empty-range").textContent =
+        "No spending transactions found after deduplication and dropping refunds/credits. " +
+        "If you expected results, check that the right account format was selected for each file.";
+      show($("empty-range"));
+      return;
     }
-    const warnPanel = (title, items) => {
-      if (!items || items.length === 0) return "";
-      return `<div class="card warning-card"><details><summary>${title} (${items.length})</summary><ul class="warning-list">${items.map(w => `<li>${escapeHtml(w)}</li>`).join("")}</ul></details></div>`;
+    state.dateRange.from = dates[0];
+    state.dateRange.to = dates[dates.length - 1];
+    $("date-from").min = state.dateRange.from;
+    $("date-from").max = state.dateRange.to;
+    $("date-to").min = state.dateRange.from;
+    $("date-to").max = state.dateRange.to;
+    $("date-from").value = state.dateRange.from;
+    $("date-to").value = state.dateRange.to;
+
+    renderForDateRange();
+  }
+
+  function renderWarnings(warnings, panelId, summaryId, listId, titleFn) {
+    const panel = $(panelId);
+    if (!warnings || warnings.length === 0) { hide(panel); return; }
+    show(panel);
+    $(summaryId).textContent = titleFn(warnings.length);
+    const list = $(listId);
+    list.innerHTML = "";
+    for (const w of warnings) {
+      const li = document.createElement("li");
+      li.textContent = w;
+      list.appendChild(li);
+    }
+  }
+
+  // ---- Date range filter ----
+  function wireDateRange() {
+    $("date-from").addEventListener("change", () => {
+      state.dateRange.from = $("date-from").value;
+      renderForDateRange();
+    });
+    $("date-to").addEventListener("change", () => {
+      state.dateRange.to = $("date-to").value;
+      renderForDateRange();
+    });
+  }
+
+  function renderForDateRange() {
+    if (!state.session) return;
+    const { from, to } = state.dateRange;
+    if (!from || !to || from > to) {
+      $("empty-range").textContent = "Invalid date range.";
+      show($("empty-range"));
+      return;
+    }
+    const inRange = (r) => r.date >= from && r.date <= to;
+    const rows = state.session.rows.filter(inRange);
+    const dedup = rows.filter((r) => !r.duplicate);
+    const excluded = new Set(state.config.excluded || []);
+    const dashboardRows = excluded.size ? dedup.filter((r) => !excluded.has(r.category)) : dedup;
+
+    if (rows.length === 0) {
+      $("empty-range").textContent = `No transactions in selected range (${from} to ${to}).`;
+      show($("empty-range"));
+    } else hide($("empty-range"));
+
+    $("date-caption").textContent = `Showing ${formatDate(from)} → ${formatDate(to)}`;
+
+    const total = dashboardRows.reduce((acc, r) => acc + r.amount, 0);
+    const nTx = dashboardRows.length;
+    const nUnmapped = dashboardRows.filter((r) => r.category === UNCAT).length;
+    const pctUnmapped = nTx > 0 ? Math.round((nUnmapped / nTx) * 100) : 0;
+    $("metric-total").textContent = fmtSGD.format(total);
+    $("metric-count").textContent = nTx.toLocaleString();
+    $("metric-unmapped").textContent = `${nUnmapped} (${pctUnmapped}%)`;
+    $("metric-refunds").textContent = state.session.dropped_negatives;
+
+    // Duplicates caption
+    const dupCap = $("duplicates-caption");
+    if (state.session.duplicates_count > 0) {
+      dupCap.textContent =
+        `Removed ${state.session.duplicates_count} duplicate row(s) ` +
+        `across uploaded files (across all uploaded data).`;
+      show(dupCap);
+    } else hide(dupCap);
+
+    // Exclusions caption
+    const excCap = $("exclusions-caption");
+    if (excluded.size) {
+      const excludedInData = [...new Set(dedup.map((r) => r.category))].filter((c) => excluded.has(c));
+      excludedInData.sort();
+      if (excludedInData.length) {
+        const nHidden = dedup.filter((r) => excluded.has(r.category)).length;
+        excCap.textContent =
+          `Hidden from dashboard: ${excludedInData.join(", ")} ` +
+          `(${nHidden} transaction${nHidden !== 1 ? "s" : ""}). ` +
+          `Downloads include all categories.`;
+        show(excCap);
+      } else hide(excCap);
+    } else hide(excCap);
+
+    state.scoped = { rows, dedup, dashboardRows };
+    renderChart(dashboardRows);
+    renderTable(dashboardRows);
+    renderPanels(rows, dedup, dashboardRows, excluded);
+  }
+
+  // ---- Collapsible panels (unmapped / excluded / duplicates) ----
+  function renderPanels(dated, dedup, dashboardRows, excluded) {
+    const unmapped = dashboardRows.filter((r) => r.category === UNCAT);
+    renderMiniPanel(
+      "unmapped-panel", "unmapped-summary", "unmapped-intro", "unmapped-rows",
+      `Unmapped transactions (${unmapped.length})`,
+      unmapped.length
+        ? "These descriptions did not match any pattern in your mapping table. " +
+          "Use the download below to grow mapping.xlsx."
+        : "Every transaction was mapped. Nice.",
+      unmapped, ["date", "description", "amount", "account"],
+    );
+
+    const excludedRows = excluded.size ? dedup.filter((r) => excluded.has(r.category)) : [];
+    let excludedIntro;
+    if (!excluded.size) {
+      excludedIntro = "No categories are flagged as excluded in categories.txt.";
+    } else if (excludedRows.length === 0) {
+      excludedIntro = `No transactions matched any excluded categories (${[...excluded].sort().join(", ")}).`;
+    } else {
+      excludedIntro =
+        "These transactions are hidden from the dashboard view because " +
+        "their category is flagged with ,exclude in categories.txt. " +
+        "They are still included in the downloads.";
+    }
+    renderMiniPanel(
+      "excluded-panel", "excluded-summary", "excluded-intro", "excluded-rows",
+      `Excluded transactions (${excludedRows.length})`,
+      excludedIntro,
+      excludedRows, ["date", "description", "amount", "category", "account"],
+    );
+
+    const duplicates = dated.filter((r) => r.duplicate);
+    renderMiniPanel(
+      "duplicates-panel", "duplicates-summary", "duplicates-intro", "duplicates-rows",
+      `Duplicate transactions (${duplicates.length})`,
+      duplicates.length
+        ? "These rows were detected as duplicates of earlier rows on the same " +
+          "date with the same amount and description, and excluded from " +
+          "analysis. Common cause: uploading the same statement twice."
+        : "No duplicate transactions in the selected range.",
+      duplicates, ["date", "description", "amount", "account"],
+    );
+  }
+
+  function renderMiniPanel(panelId, summaryId, introId, rowsId, title, intro, rows, cols) {
+    $(summaryId).textContent = title;
+    $(introId).textContent = intro;
+    const wrap = $(rowsId);
+    if (rows.length === 0) { wrap.innerHTML = ""; return; }
+    const headers = {
+      date: "Date", description: "Description", amount: "Amount",
+      category: "Category", account: "Account",
     };
-    parts.push(warnPanel("Mapping warnings", s.mapping_warnings));
-    parts.push(warnPanel("History warnings", s.history_warnings));
-    root.innerHTML = parts.join("");
+    let html = '<table class="mini-table"><thead><tr>';
+    for (const c of cols) html += `<th>${headers[c]}</th>`;
+    html += "</tr></thead><tbody>";
+    for (const r of rows) {
+      html += "<tr>";
+      for (const c of cols) {
+        if (c === "amount") html += `<td class="amount">${fmtSGD.format(r[c])}</td>`;
+        else html += `<td>${escapeHtml(String(r[c] ?? ""))}</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table>";
+    wrap.innerHTML = html;
   }
-
-  function renderTiles(rows) {
-    const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
-    const unmappedCount = rows.filter(r => r.category === "Uncategorised").length;
-    document.getElementById("tile-total").textContent = fmtSgd(total);
-    document.getElementById("tile-txns").textContent = String(rows.length);
-    document.getElementById("tile-unmapped").textContent = String(unmappedCount);
-    document.getElementById("tile-unmapped-sub").textContent =
-      rows.length ? `${Math.round(unmappedCount / rows.length * 100)}% of in-range` : "";
-    document.getElementById("tile-dropped").textContent = String(state.session.dropped_negatives || 0);
-    document.getElementById("tile-dropped-sub").textContent = `${state.session.duplicates_count || 0} duplicates`;
-    document.getElementById("tile-total-sub").textContent =
-      `${state.range.from || "—"} → ${state.range.to || "—"}`;
-    document.getElementById("tile-txns-sub").textContent =
-      `${state.config.excluded.length ? state.config.excluded.length + " categories excluded" : ""}`;
-  }
-
-  const PALETTE = ["#0b66ff","#18794e","#b54708","#b42318","#9333ea","#0d9488","#65a30d","#c2410c","#7c3aed","#0891b2","#be185d","#475569"];
-
-  function renderChart(rows) {
-    const byCat = new Map();
-    rows.forEach(r => {
-      const k = r.category || "Uncategorised";
-      byCat.set(k, (byCat.get(k) || 0) + Number(r.amount || 0));
-    });
-    const data = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
-    Plotly.react("chart", [{
-      type: "bar",
-      orientation: "h",
-      x: data.map(d => d[1]),
-      y: data.map(d => d[0]),
-      marker: { color: data.map((_, i) => PALETTE[i % PALETTE.length]) },
-      hovertemplate: "%{y}: %{x:$,.0f}<extra></extra>",
-    }], {
-      margin: { l: 140, r: 24, t: 12, b: 32 },
-      xaxis: { tickformat: "$,.0f" },
-      yaxis: { autorange: "reversed" },
-      paper_bgcolor: "transparent",
-      plot_bgcolor: "transparent",
-      font: { family: "-apple-system, Inter, sans-serif", size: 12 },
-    }, { displayModeBar: false, responsive: true });
-  }
-
-  function renderFilters() {
-    const cats = [...new Set(state.session.rows.map(r => r.category).filter(Boolean))].sort();
-    const accts = [...new Set(state.session.rows.map(r => r.account).filter(Boolean))].sort();
-    const c = document.getElementById("filter-category");
-    const a = document.getElementById("filter-account");
-    const curC = c.value, curA = a.value;
-    c.innerHTML = '<option value="">All categories</option>' + cats.map(x => `<option value="${x}">${x}</option>`).join("");
-    a.innerHTML = '<option value="">All accounts</option>' + accts.map(x => `<option value="${x}">${x}</option>`).join("");
-    c.value = curC; a.value = curA;
-    c.onchange = renderTableFromCurrent;
-    a.onchange = renderTableFromCurrent;
-  }
-
-  function renderTableFromCurrent() { renderTable(scopedRows()); }
-
-  function renderTable(rows) {
-    const c = document.getElementById("filter-category").value;
-    const a = document.getElementById("filter-account").value;
-    const filtered = rows.filter(r => (!c || r.category === c) && (!a || r.account === a));
-    const cols = [
-      { title: "Date", field: "date", width: 100, sorter: "string" },
-      { title: "Description", field: "description", minWidth: 220, sorter: "string" },
-      { title: "Amount", field: "amount", hozAlign: "right", width: 110, sorter: "number",
-        formatter: (cell) => fmtSgd(cell.getValue()) },
-      { title: "Category", field: "category", width: 160, sorter: "string",
-        formatter: (cell) => `<span class="tag ${cell.getValue() === "Uncategorised" ? "tag-warning" : ""}">${cell.getValue()}</span>` },
-      { title: "Account", field: "account", width: 140, sorter: "string" },
-      { title: "Matched pattern", field: "matched_pattern", minWidth: 160, sorter: "string" },
-      { title: "Source", field: "source_file", minWidth: 140, sorter: "string" },
-    ];
-    if (state.tabulator) state.tabulator.destroy();
-    state.tabulator = new Tabulator("#transactions-table", {
-      data: filtered,
-      columns: cols,
-      layout: "fitColumns",
-      height: 480,
-      pagination: true,
-      paginationSize: 50,
-    });
-  }
-
-  // ---------- downloads ----------
-
-  function wireDownloads() {
-    const body = () => ({ start_date: state.range.from, end_date: state.range.to });
-    const needSession = () => {
-      if (!state.session) { toast("Compile first", "warn"); return null; }
-      return state.session.session_id;
-    };
-    document.getElementById("dl-categorised").addEventListener("click", async () => {
-      const sid = needSession(); if (!sid) return;
-      await api.download(`/api/outflows/download/categorised/${sid}`, { body: body(), fallbackName: "categorised.xlsx" });
-    });
-    document.getElementById("dl-unmapped").addEventListener("click", async () => {
-      const sid = needSession(); if (!sid) return;
-      await api.download(`/api/outflows/download/unmapped/${sid}`, { body: body(), fallbackName: "unmapped.xlsx" });
-    });
-    document.getElementById("dl-html").addEventListener("click", async () => {
-      const sid = needSession(); if (!sid) return;
-      await api.download(`/api/outflows/download/html/${sid}`, { body: body(), fallbackName: "snapshot.html" });
-    });
-    document.getElementById("append-history").addEventListener("click", async () => {
-      const sid = needSession(); if (!sid) return;
-      const n = unmappedRows().length;
-      if (n === 0) { toast("Nothing unmapped to append in this range", "warn"); return; }
-      if (!confirm(`Append up to ${n} unmapped transactions to transaction_history.xlsx?`)) return;
-      const res = await api.postJson(`/api/outflows/history/append/${sid}`, body());
-      toast(`Added ${res.n_added}, skipped ${res.n_skipped}`, res.n_added ? "ok" : "info");
-    });
-  }
-
-  // ---------- util ----------
 
   function escapeHtml(s) {
-    return String(s == null ? "" : s).replace(/[&<>"']/g, m => ({
+    return s.replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-    }[m]));
+    }[c]));
   }
 
-  boot();
+  // ---- Chart (original earthy palette + Uncategorised rust) ----
+  function renderChart(rows) {
+    const totals = {};
+    const counts = {};
+    for (const r of rows) {
+      totals[r.category] = (totals[r.category] || 0) + r.amount;
+      counts[r.category] = (counts[r.category] || 0) + 1;
+    }
+    const categories = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
+    const colors = [];
+    let paletteIdx = 0;
+    for (const cat of categories) {
+      if (cat === UNCAT) colors.push(UNCAT_COLOUR);
+      else { colors.push(PALETTE[paletteIdx % PALETTE.length]); paletteIdx++; }
+    }
+    const totalsK = categories.map((c) => totals[c] / 1000);
+
+    const data = [{
+      type: "bar",
+      orientation: "h",
+      x: totalsK,
+      y: categories,
+      marker: { color: colors },
+      text: totalsK.map((v) => `$${v.toFixed(1)}K`),
+      textposition: "outside",
+      cliponaxis: false,
+      customdata: categories.map((c) => [fmtSGD.format(totals[c]), counts[c]]),
+      hovertemplate:
+        "<b>%{y}</b><br>%{customdata[0]}<br>%{customdata[1]} transactions<extra></extra>",
+    }];
+    const layout = {
+      height: Math.max(300, 40 * categories.length + 100),
+      margin: { l: 160, r: 80, t: 20, b: 60 },
+      xaxis: {
+        title: "Total spend ($K)",
+        tickprefix: "$",
+        tickformat: ",.1f",
+        gridcolor: "#EEE",
+        showgrid: true,
+      },
+      yaxis: { autorange: "reversed", ticksuffix: "   " },
+      plot_bgcolor: "white",
+      paper_bgcolor: "white",
+      font: { family: "Source Sans Pro, sans-serif" },
+    };
+    Plotly.react("chart", data, layout, { displayModeBar: false, responsive: true });
+  }
+
+  // ---- Table ----
+  function wireTableFilters() {
+    $("filter-category").addEventListener("change", () => {
+      state.tableFilter.category = $("filter-category").value;
+      if (state.scoped) renderTable(state.scoped.dashboardRows);
+    });
+    $("filter-account").addEventListener("change", () => {
+      state.tableFilter.account = $("filter-account").value;
+      if (state.scoped) renderTable(state.scoped.dashboardRows);
+    });
+  }
+
+  function renderTable(rows) {
+    refreshFilterOptions("filter-category", "category", rows);
+    refreshFilterOptions("filter-account", "account", rows);
+
+    const { category, account } = state.tableFilter;
+    let view = rows;
+    if (category !== "All") view = view.filter((r) => r.category === category);
+    if (account !== "All") view = view.filter((r) => r.account === account);
+
+    if (!state.table) {
+      state.table = new Tabulator("#transactions-table", {
+        data: view,
+        layout: "fitColumns",
+        placeholder: "No transactions match the current filters.",
+        pagination: false,
+        height: "500px",
+        columns: [
+          { title: "Date", field: "date", width: 110, sorter: "string" },
+          { title: "Description", field: "description", minWidth: 200 },
+          { title: "Amount", field: "amount", hozAlign: "right", width: 110, sorter: "number",
+            formatter: (cell) => fmtSGD.format(cell.getValue()) },
+          { title: "Category", field: "category", width: 160 },
+          { title: "Account", field: "account", width: 160 },
+          { title: "Matched pattern", field: "matched_pattern", minWidth: 140 },
+        ],
+      });
+    } else {
+      state.table.replaceData(view);
+    }
+  }
+
+  function refreshFilterOptions(selectId, field, rows) {
+    const select = $(selectId);
+    const current = state.tableFilter[field];
+    const values = [...new Set(rows.map((r) => r[field]))].sort();
+    select.innerHTML = "";
+    for (const v of ["All", ...values]) {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      if (v === current) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (!["All", ...values].includes(current)) {
+      state.tableFilter[field] = "All";
+      select.value = "All";
+    }
+  }
+
+  function formatDate(iso) {
+    const [y, m, d] = iso.split("-");
+    const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${d}-${monthNames[parseInt(m, 10) - 1]}-${y.slice(2)}`;
+  }
+
+  // ---- Downloads + history append ----
+  function wireDownloads() {
+    $("dl-categorised").addEventListener("click", () => downloadFile(
+      `/api/outflows/download/categorised/${sessionId()}`,
+      `spending_categorised_${nowStamp()}.xlsx`,
+    ));
+    $("dl-unmapped").addEventListener("click", () => downloadFile(
+      `/api/outflows/download/unmapped/${sessionId()}`,
+      `spending_unmapped_${nowStamp()}.xlsx`,
+    ));
+    $("dl-html").addEventListener("click", () => downloadFile(
+      `/api/outflows/download/html/${sessionId()}`,
+      `spending_snapshot_${state.dateRange.from}_${state.dateRange.to}.html`,
+    ));
+    $("append-history").addEventListener("click", appendHistory);
+  }
+
+  const sessionId = () => (state.session ? state.session.session_id : "");
+  function nowStamp() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+  }
+
+  async function downloadFile(endpoint, filename) {
+    if (!state.session) return;
+    clearDownloadBanners();
+    try {
+      await api.download(endpoint, {
+        body: { start_date: state.dateRange.from, end_date: state.dateRange.to },
+        fallbackName: filename,
+      });
+    } catch (err) {
+      showDownloadError(String(err.message || err));
+    }
+  }
+
+  async function appendHistory() {
+    if (!state.session) return;
+    clearDownloadBanners();
+    try {
+      const res = await api.postJson(`/api/outflows/history/append/${sessionId()}`, {
+        start_date: state.dateRange.from,
+        end_date: state.dateRange.to,
+      });
+      const { n_added, n_skipped } = res;
+      let msg;
+      if (n_added === 0 && n_skipped === 0) {
+        msg = "Nothing to append — there are no unmapped rows in the selected range.";
+      } else if (n_added === 0) {
+        msg = `Nothing new to add — all ${n_skipped} unmapped row(s) are already in transaction_history.xlsx.`;
+      } else {
+        msg = `Appended ${n_added} new row(s) to transaction_history.xlsx.`;
+        if (n_skipped) msg += ` Skipped ${n_skipped} duplicate(s).`;
+        msg += " Edit the file in Excel to fill in categories.";
+      }
+      showDownloadStatus(msg);
+    } catch (err) {
+      showDownloadError(String(err.message || err));
+    }
+  }
+
+  function clearDownloadBanners() {
+    hide($("download-status"));
+    hide($("download-error"));
+  }
+  function showDownloadStatus(msg) {
+    $("download-status").textContent = msg;
+    show($("download-status"));
+  }
+  function showDownloadError(msg) {
+    $("download-error").textContent = msg;
+    show($("download-error"));
+  }
+
+  boot().catch((err) => console.error("Outflows boot failed:", err));
 })();

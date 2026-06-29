@@ -5,7 +5,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/css/tabulator.min.css">
-<link rel="stylesheet" href="/assets/static/assets.css">
+<link rel="stylesheet" href="/assets/static/assets.css?v={{ asset_v }}">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/js/tabulator.min.js"></script>
 {% endblock %}
@@ -16,19 +16,24 @@
 
 {% block content %}
 <section class="card">
-  <div class="card__header">
-    <h2 class="card__title">1. Choose source files</h2>
-    <span class="card__subtitle" id="saved-meta"></span>
+  <h2>Choose source files</h2>
+  <div class="caption" id="saved-meta"></div>
+
+  <div id="dropzone" class="dropzone">
+    <div class="dropzone-text">
+      <strong>Drop one or more broker statements here</strong>
+      <div class="dropzone-sub">.xlsx · .xls · .csv</div>
+    </div>
+    <button type="button" class="btn" id="browse-btn">Browse files</button>
+    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" hidden>
   </div>
-  <div class="dropzone" id="dropzone">
-    <strong>Drag &amp; drop broker statements here</strong>
-    <div class="muted" style="margin-top:6px;">or <button type="button" class="btn btn-ghost btn-sm" id="browse-btn">Browse files</button></div>
-    <input type="file" id="file-input" multiple hidden>
+
+  <div id="file-list" class="file-list hidden">
+    <h3>Select source per file</h3>
+    <div id="file-rows"></div>
   </div>
-  <ul id="file-list" class="file-list"></ul>
-  <div class="row" style="margin-top: var(--space-3); justify-content: flex-end; gap: var(--space-2);">
-    <button class="btn btn-primary" id="compile-btn" disabled>Compile</button>
-  </div>
+
+  <button id="compile-btn" type="button" class="btn btn-primary" disabled>Compile</button>
 </section>
 
 <section id="results" class="hidden" style="margin-top: var(--space-4);">
@@ -100,5 +105,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/assets/static/assets.js"></script>
+<script src="/assets/static/assets.js?v={{ asset_v }}"></script>
 {% endblock %}

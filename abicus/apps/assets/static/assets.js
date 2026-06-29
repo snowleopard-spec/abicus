@@ -47,10 +47,11 @@
   function wireDropzone() {
     const dz = document.getElementById("dropzone");
     const input = document.getElementById("file-input");
-    document.getElementById("browse-btn").addEventListener("click", () => input.click());
+    document.getElementById("browse-btn").addEventListener("click", (e) => {
+      e.stopPropagation(); input.click();
+    });
     dz.addEventListener("click", (e) => {
-      if (e.target.id === "browse-btn") return;
-      input.click();
+      if (e.target.id !== "browse-btn") input.click();
     });
     input.addEventListener("change", () => { addFiles(input.files); input.value = ""; });
     ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, (e) => {
@@ -63,6 +64,7 @@
   }
 
   function addFiles(fileList) {
+    if (!fileList || !fileList.length) return;
     const defaultSrc = state.lastSource || (state.config.sources[0] && state.config.sources[0].name) || "";
     for (const f of fileList) {
       state.files.push({ file: f, source: defaultSrc });
@@ -71,26 +73,50 @@
   }
 
   function renderFileList() {
-    const ul = document.getElementById("file-list");
-    ul.innerHTML = state.files.map((entry, i) => `
-      <li>
-        <span class="filename" title="${entry.file.name}">${entry.file.name}</span>
-        <select class="select file-source" data-i="${i}">
-          ${state.config.sources.map(s => `<option value="${s.name}" ${s.name === entry.source ? "selected" : ""}>${s.name} (${s.parser})</option>`).join("")}
-        </select>
-        <button class="file-remove" data-i="${i}" title="Remove">✕</button>
-      </li>
-    `).join("");
-    ul.querySelectorAll(".file-source").forEach(sel => sel.addEventListener("change", (e) => {
-      const i = Number(e.target.dataset.i);
-      state.files[i].source = e.target.value;
-      state.lastSource = e.target.value;
-    }));
-    ul.querySelectorAll(".file-remove").forEach(btn => btn.addEventListener("click", (e) => {
-      state.files.splice(Number(e.currentTarget.dataset.i), 1);
-      renderFileList();
-    }));
-    document.getElementById("compile-btn").disabled = state.files.length === 0;
+    const wrap = document.getElementById("file-list");
+    const rows = document.getElementById("file-rows");
+    rows.innerHTML = "";
+    if (state.files.length === 0) {
+      wrap.classList.add("hidden");
+      document.getElementById("compile-btn").disabled = true;
+      return;
+    }
+    wrap.classList.remove("hidden");
+    document.getElementById("compile-btn").disabled = false;
+
+    state.files.forEach((entry, i) => {
+      const row = document.createElement("div");
+      row.className = "file-row";
+
+      const name = document.createElement("div");
+      name.className = "file-row-name";
+      name.textContent = `📄 ${entry.file.name}`;
+      row.appendChild(name);
+
+      const select = document.createElement("select");
+      state.config.sources.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.name;
+        opt.textContent = `${s.name} (${s.parser})`;
+        if (s.name === entry.source) opt.selected = true;
+        select.appendChild(opt);
+      });
+      select.addEventListener("change", () => {
+        state.files[i].source = select.value;
+        state.lastSource = select.value;
+      });
+      row.appendChild(select);
+
+      const rm = document.createElement("button");
+      rm.className = "remove-btn"; rm.type = "button"; rm.textContent = "×"; rm.title = "Remove file";
+      rm.addEventListener("click", () => {
+        state.files.splice(i, 1);
+        renderFileList();
+      });
+      row.appendChild(rm);
+
+      rows.appendChild(row);
+    });
   }
 
   // ---------- compile / load ----------

@@ -8,13 +8,43 @@ Handles both Excel (.xlsx/.xls) and CSV (.csv) files.
 import pandas as pd
 
 
+REQUIRED_COLS = [
+    "Date",
+    "Amount Type Name",
+    "Asset type",
+    "Underlying Instrument Description",
+    "Account Currency",
+    "Amount Account Currency",
+    "Booking Account ID",
+]
+
+
 def read_file(file, sheet_name=None):
     """Read a file as either Excel or CSV based on filename."""
     name = getattr(file, "name", str(file)).lower()
     if name.endswith(".csv"):
         return pd.read_csv(file)
-    else:
-        return pd.read_excel(file, sheet_name=sheet_name)
+    # Surface a clear error if the named sheet is missing.
+    if sheet_name is not None:
+        try:
+            xl = pd.ExcelFile(file)
+        except Exception as e:
+            raise ValueError(f"Could not open Excel file: {e}") from e
+        if sheet_name not in xl.sheet_names:
+            raise ValueError(
+                f"Sheet '{sheet_name}' not found. Available sheets: {xl.sheet_names}"
+            )
+        return xl.parse(sheet_name)
+    return pd.read_excel(file)
+
+
+def _check_columns(df: pd.DataFrame) -> None:
+    missing = [c for c in REQUIRED_COLS if c not in df.columns]
+    if missing:
+        raise ValueError(
+            f"Broker A export is missing expected columns {missing}. "
+            f"Sheet 'Aggregated Amounts' had columns: {list(df.columns)}"
+        )
 
 
 def parse(file, file_config, mapping_asset_class, mapping_us_situs):
@@ -24,6 +54,7 @@ def parse(file, file_config, mapping_asset_class, mapping_us_situs):
 
     # --- 1. Read the relevant sheet ---
     df = read_file(file, sheet_name="Aggregated Amounts")
+    _check_columns(df)
 
     # --- 2. Filter to most recent date ---
     dates = df["Date"].dropna().unique()

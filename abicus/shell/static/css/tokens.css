@@ -37,6 +37,7 @@
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+  --font-display: var(--font-sans);
 
   --text-xs: 12px;
   --text-sm: 13px;

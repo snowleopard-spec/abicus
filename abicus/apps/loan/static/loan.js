@@ -49,7 +49,6 @@
     state.snapshot = await api.get(`/api/loan/state?as_of=${state.asOf}`);
     state.schedule = await api.get("/api/loan/schedule");
     renderTiles();
-    renderTerms();
     renderLast();
     renderSchedule();
   }
@@ -96,22 +95,6 @@
     document.getElementById("tile-days").textContent = String(s.days_since_last_payment);
     document.getElementById("tile-days-sub").textContent =
       s.last_payment ? `last paid ${fmtDate(s.last_payment.date)}` : "";
-  }
-
-  function renderTerms() {
-    const c = state.config;
-    const rows = [
-      ["Origin date", fmtDate(c.origin_date)],
-      ["Original principal", fmtMoney(c.origin_principal, c.currency)],
-      ["Annual rate", fmtPct(c.annual_rate)],
-      ["Monthly payment", fmtMoney(c.monthly_payment, c.currency)],
-      ["Tenor", `${c.original_tenor_months} months`],
-      ["Maturity date", fmtDate(c.maturity_date)],
-      ["Payment day", `${c.payment_day_of_month}th of the month`],
-      ["Currency", c.currency],
-    ];
-    document.getElementById("terms-table").innerHTML =
-      rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
   }
 
   function renderLast() {

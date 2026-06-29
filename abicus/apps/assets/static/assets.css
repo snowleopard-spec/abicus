@@ -1,35 +1,115 @@
-.file-list {
-  list-style: none;
-  padding: 0;
-  margin: var(--space-3) 0 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+/* ---------- Assets theme — olive / Avenir Next ---------- */
+body[data-active="assets"] {
+  --bg-app: #FAF6EF;
+  --bg-sidebar: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-hover: #EFE8DC;
+  --bg-active: #D9CFBE;
+  --border: #D9CFBE;
+  --border-strong: #B8AA92;
+  --text-primary: #3D3229;
+  --text-secondary: #6B5D4F;
+  --text-muted: #A09080;
+  --accent: #556B2F;
+  --accent-hover: #455823;
+  --accent-soft: #E7EFE0;
+  --success: #556B2F;
+  --success-soft: #E7EFE0;
+  --warning: #B8860B;
+  --warning-soft: #FBF2DC;
+  --danger: #A0522D;
+  --danger-soft: #FBE5DF;
+  --font-sans: 'Source Sans Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Avenir Next', 'Avenir', -apple-system, BlinkMacSystemFont, sans-serif;
 }
-.file-list li {
-  display: grid;
-  grid-template-columns: 1fr minmax(180px, 220px) auto;
-  gap: var(--space-3);
-  align-items: center;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
+/* ---------- Section + spacing (match outflows) ---------- */
+body[data-active="assets"] .card { margin-bottom: 1.25rem; }
+body[data-active="assets"] .card h2 {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-size: 1.5rem;
+  margin: 0 0 0.75rem 0;
 }
-.file-list li .filename {
-  font-size: var(--text-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+body[data-active="assets"] .card h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.15rem;
+  margin: 0 0 0.6rem 0;
 }
-.file-list li .file-remove {
-  border: none;
-  background: transparent;
+.caption {
   color: var(--text-muted);
-  cursor: pointer;
-  font-size: 18px;
+  font-size: 0.875rem;
+  margin: 0.5rem 0;
 }
-.file-list li .file-remove:hover { color: var(--danger); }
+
+/* ---------- Dropzone (compact horizontal — match outflows) ---------- */
+body[data-active="assets"] .dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--bg-hover);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+}
+body[data-active="assets"] .dropzone.is-drag,
+body[data-active="assets"] .dropzone:hover {
+  background: var(--bg-active);
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.dropzone-text { color: var(--text-primary); }
+.dropzone-sub {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
+/* ---------- File list (div rows, not li) ---------- */
+.file-list { margin-bottom: 1rem; }
+.file-list h3 { margin: 0 0 0.6rem; }
+.file-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.file-row:last-child { border-bottom: 0; }
+.file-row-name {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+.file-row select {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  min-width: 12rem;
+}
+.file-row .remove-btn {
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  padding: 0.2rem 0.5rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.file-row .remove-btn:hover { color: var(--danger); }
 
 .banner-warning {
   border-left: 3px solid var(--warning);

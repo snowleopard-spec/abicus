@@ -1,429 +1,534 @@
 (() => {
   const state = {
     claims: [],
-    archivedClaims: [],
-    showArchived: false,
     claimants: [],
     institutions: [],
-    filters: {
-      from: null,
-      to: null,
-      claimant: "",
-      status: "",
-      search: "",
-    },
+    showArchived: false,
+    sortKey: "date_incurred",
+    sortDir: -1,
   };
 
-  const fmtCcy = (amount, ccy = "SGD") =>
-    new Intl.NumberFormat("en-SG", {
-      style: "currency", currency: ccy || "SGD", maximumFractionDigits: 0,
-    }).format(amount || 0);
+  const ADD_NEW = "__add_new__";
 
+  // ---------- formatting ----------
+
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const money = (n) =>
+    Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const fmtDate = (iso) => {
-    if (!iso) return "—";
-    const d = new Date(iso + "T00:00:00");
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" });
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    return `${d}-${MONTHS[Number(m) - 1]}-${y.slice(2)}`;
   };
+  const sgd = (n) => "SGD " + Number(n || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const esc = (s) =>
+    String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 
-  const daysSince = (iso) => {
-    if (!iso) return null;
-    const then = new Date(iso + "T00:00:00").getTime();
-    if (Number.isNaN(then)) return null;
-    return Math.max(0, Math.floor((Date.now() - then) / 86400000));
-  };
+  // ---------- status mapping ----------
 
-  const statusClass = (s) => {
-    switch (s) {
-      case "Awaiting invoice": return "row-await";
-      case "Ready to claim":   return "row-ready";
-      case "Claim submitted":  return "row-claim";
-      case "Complete":         return "row-done";
-      case "Excluded":         return "row-excluded";
-      case "Check: rebated but not claimed": return "row-warn";
-      default: return "";
-    }
-  };
-  const statusTag = (s) => {
-    const map = {
-      "Awaiting invoice": "tag-danger",
-      "Ready to claim":   "tag-warning",
-      "Claim submitted":  "tag-accent",
-      "Complete":         "tag-success",
-      "Excluded":         "tag",
-      "Check: rebated but not claimed": "tag-danger",
-    };
-    return `<span class="tag ${map[s] || ""}">${s}</span>`;
-  };
-
-  // ---------- data load ----------
-
-  async function loadAll() {
-    const [config, institutions, active, archived] = await Promise.all([
-      api.get("/api/claims/config"),
-      api.get("/api/claims/institutions"),
-      api.get("/api/claims/claims"),
-      api.get("/api/claims/claims/archived"),
-    ]);
-    state.claimants = config.claimants || [];
-    state.institutions = institutions || [];
-    state.claims = active || [];
-    state.archivedClaims = archived || [];
-    populateClaimantFilter();
-    render();
+  function statusClass(s) {
+    if (s === "Excluded") return "st-excluded";
+    if (s.startsWith("Check")) return "st-warn";
+    if (s === "Complete") return "st-done";
+    if (s === "Claim submitted") return "st-claim";
+    if (s === "Ready to claim") return "st-ready";
+    return "st-await";
+  }
+  function rowClass(s) {
+    if (s === "Excluded") return "row-excluded";
+    if (s.startsWith("Check")) return "row-warn";
+    if (s === "Complete") return "row-done";
+    if (s === "Claim submitted") return "row-claim";
+    if (s === "Ready to claim") return "row-ready";
+    return "row-await";
   }
 
-  async function reloadClaims() {
-    const [active, archived] = await Promise.all([
-      api.get("/api/claims/claims"),
-      api.get("/api/claims/claims/archived"),
-    ]);
-    state.claims = active || [];
-    state.archivedClaims = archived || [];
-    render();
+  function daysAged(r) {
+    if (r.status === "Complete" || r.status === "Excluded") return null;
+    const incurred = new Date(r.date_incurred + "T00:00:00");
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return Math.max(0, Math.floor((today - incurred) / 86400000));
   }
 
-  function populateClaimantFilter() {
-    const sel = document.getElementById("filter-claimant");
-    sel.innerHTML = '<option value="">All</option>' +
-      state.claimants.map(c => `<option value="${c}">${c}</option>`).join("");
-  }
+  // ---------- boot ----------
 
-  // ---------- filtering ----------
+  async function boot() {
+    document.getElementById("filter-from").value = "2026-01-01";
+    document.getElementById("filter-to").value = new Date().toISOString().slice(0, 10);
 
-  function filtered() {
-    const src = state.showArchived ? state.archivedClaims : state.claims;
-    const { from, to, claimant, status, search } = state.filters;
-    const q = (search || "").trim().toLowerCase();
-    return src.filter(c => {
-      if (from && c.date_incurred < from) return false;
-      if (to && c.date_incurred > to) return false;
-      if (claimant && c.claimant !== claimant) return false;
-      if (status === "open") {
-        if (c.status === "Complete" || c.status === "Excluded") return false;
-      } else if (status && c.status !== status) return false;
-      if (q) {
-        const hay = `${c.institution || ""} ${c.notes || ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
+    const cfg = await api.get("/api/claims/config");
+    state.claimants = cfg.claimants || [];
+    const cfFilter = document.getElementById("filter-claimant");
+    const cfForm = document.getElementById("f_claimant");
+    state.claimants.forEach((c) => {
+      cfFilter.insertAdjacentHTML("beforeend", `<option>${esc(c)}</option>`);
+      cfForm.insertAdjacentHTML("beforeend", `<option>${esc(c)}</option>`);
     });
+    await loadInstitutions();
+    wireControls();
+    wireModal();
+    await reload();
   }
 
-  // ---------- render ----------
+  async function loadInstitutions() {
+    state.institutions = await api.get("/api/claims/institutions");
+    renderInstitutionSelect();
+  }
+
+  function renderInstitutionSelect(selected) {
+    const sel = document.getElementById("f_institution");
+    const opts = [
+      `<option value="" disabled ${selected ? "" : "selected"}>— pick one —</option>`,
+    ];
+    state.institutions.forEach((i) => {
+      const v = i.replace(/"/g, "&quot;");
+      opts.push(`<option value="${v}" ${i === selected ? "selected" : ""}>${esc(i)}</option>`);
+    });
+    opts.push('<option disabled>──────────</option>');
+    opts.push(`<option value="${ADD_NEW}">+ Add new institution…</option>`);
+    sel.innerHTML = opts.join("");
+  }
+
+  async function handleInstitutionChange() {
+    const sel = document.getElementById("f_institution");
+    if (sel.value !== ADD_NEW) return;
+    const name = (prompt("New institution name:") || "").trim();
+    if (!name) { renderInstitutionSelect(); return; }
+    try {
+      const fresh = await api.postJson("/api/claims/institutions", { name });
+      state.institutions = fresh;
+      const stored = state.institutions.find((x) => x.toLowerCase() === name.toLowerCase()) || name;
+      renderInstitutionSelect(stored);
+      document.getElementById("form-err").textContent = "";
+    } catch (err) {
+      document.getElementById("form-err").textContent = "Could not add institution.";
+      renderInstitutionSelect();
+    }
+  }
+
+  async function reload() {
+    const url = state.showArchived ? "/api/claims/claims/archived" : "/api/claims/claims";
+    state.claims = await api.get(url);
+    state.claims.forEach((r) => { r.shortfall = (r.amount || 0) - (r.amount_rebated || 0); });
+    state.sortKey = "date_incurred"; state.sortDir = -1;
+    render();
+  }
+
+  // ---------- filter + sort + render ----------
+
+  function sortBy(k) {
+    if (state.sortKey === k) state.sortDir *= -1;
+    else { state.sortKey = k; state.sortDir = 1; }
+    render();
+  }
 
   function render() {
-    const rows = filtered();
-    renderTiles(rows);
-    renderTable(rows);
-    document.getElementById("toggle-archive-btn").textContent =
-      state.showArchived ? "Show active" : "Show archived";
+    const q = document.getElementById("filter-search").value.toLowerCase().trim();
+    const fcl = document.getElementById("filter-claimant").value;
+    const fst = document.getElementById("filter-status").value;
+    const fop = document.getElementById("filter-open").value;
+    const dFrom = document.getElementById("filter-from").value;
+    const dTo = document.getElementById("filter-to").value;
+
+    const inWindow = state.claims.filter((r) => {
+      if (dFrom && r.date_incurred < dFrom) return false;
+      if (dTo && r.date_incurred > dTo) return false;
+      return true;
+    });
+
+    let rows = inWindow.filter((r) => {
+      if (fcl && r.claimant !== fcl) return false;
+      if (fst && r.status !== fst) return false;
+      if (fop === "open" && r.status === "Complete") return false;
+      if (q && !(r.institution.toLowerCase().includes(q) || (r.notes || "").toLowerCase().includes(q))) return false;
+      return true;
+    });
+
+    const getSort = (r, k) => (k === "days_aged" ? (daysAged(r) ?? -Infinity) : r[k]);
+    rows.sort((a, b) => {
+      let x = getSort(a, state.sortKey);
+      let y = getSort(b, state.sortKey);
+      if (typeof x === "string") { x = (x || "").toLowerCase(); y = (y || "").toLowerCase(); }
+      return x < y ? -state.sortDir : x > y ? state.sortDir : 0;
+    });
+
+    // table
+    document.getElementById("claims-tbody").innerHTML = rows.map((r) => {
+      const aged = daysAged(r);
+      const otherN = (r.other_files || []).length;
+      const otherIcon = `<span class="other-docs-icon ${otherN ? "has" : ""}"
+                              data-action="other-docs" data-id="${r.id}"
+                              title="Attached documents${otherN ? ` (${otherN})` : ""}">📎${otherN ? ` ${otherN}` : ""}</span>`;
+      return `
+        <tr class="${rowClass(r.status)}">
+          <td style="white-space:nowrap">${fmtDate(r.date_incurred)}</td>
+          <td class="center">${aged ?? ""}</td>
+          <td>${esc(r.claimant)}</td>
+          <td>${esc(r.institution)}</td>
+          <td class="num">${money(r.amount)}</td>
+          <td class="center"><span class="flag ${r.invoice_received ? "" : "off"}" data-toggle="invoice_received" data-id="${r.id}" title="Invoice received">●</span></td>
+          <td class="center"><span class="flag ${r.claimed ? "" : "off"}" data-toggle="claimed" data-id="${r.id}" title="Claimed">●</span></td>
+          <td class="center"><span class="flag ${r.rebated ? "" : "off"}" data-toggle="rebated" data-id="${r.id}" title="Rebated">●</span></td>
+          <td class="center"><span class="flag ${r.excluded ? "" : "off"}" data-toggle="excluded" data-id="${r.id}" title="Excluded">●</span></td>
+          <td class="num">${r.rebated ? money(r.amount_rebated) : "—"}</td>
+          <td class="num">${money(r.shortfall)}</td>
+          <td><span class="pill ${statusClass(r.status)}">${r.status}</span></td>
+          <td>${
+            r.invoice_file
+              ? `<a class="linkbtn" href="/api/claims/claims/${r.id}/invoice" target="_blank">View ↗</a>`
+              : state.showArchived
+                ? `<span class="nofile">none</span>`
+                : `<button class="file-add" data-action="upload-invoice" data-id="${r.id}" title="Add invoice">+ Add</button>`
+          }</td>
+          <td style="white-space:nowrap">
+            ${otherIcon}
+            ${state.showArchived
+              ? `<span class="rowact" data-action="restore" data-id="${r.id}">Restore</span>
+                 <span class="rowact danger" data-action="delete" data-id="${r.id}">Delete</span>`
+              : `<span class="rowact" data-action="edit" data-id="${r.id}">Edit</span>
+                 <span class="rowact" data-action="archive" data-id="${r.id}">Archive</span>
+                 <span class="rowact danger" data-action="delete" data-id="${r.id}">Delete</span>`}
+          </td>
+        </tr>`;
+    }).join("");
+
+    document.getElementById("empty").classList.toggle("hidden", rows.length > 0);
+    document.getElementById("row-count").textContent = `${rows.length} of ${state.claims.length}`;
+
+    renderSortMarks();
+    renderSummary(inWindow);
   }
 
-  function renderTiles(rows) {
-    const ccy = (rows[0] && rows[0].currency) || "SGD";
-    const incurred = rows.reduce((s, c) => s + (c.excluded ? 0 : Number(c.amount || 0)), 0);
-    const rebated = rows.reduce((s, c) => s + (c.excluded ? 0 : Number(c.amount_rebated || 0)), 0);
-    const outstanding = rows.reduce((s, c) => s + (Number(c.outstanding || 0)), 0);
-    document.getElementById("tile-incurred").textContent = fmtCcy(incurred, ccy);
-    document.getElementById("tile-rebated").textContent = fmtCcy(rebated, ccy);
-    document.getElementById("tile-outstanding").textContent = fmtCcy(outstanding, ccy);
-    document.getElementById("tile-count").textContent = String(rows.length);
-    const excluded = rows.filter(c => c.excluded).length;
-    document.getElementById("tile-count-sub").textContent =
-      `${rows.length - excluded} active, ${excluded} excluded`;
-    document.getElementById("tile-incurred-sub").textContent =
-      state.showArchived ? "Archived" : "Active";
-    document.getElementById("tile-rebated-sub").textContent =
-      rebated > 0 ? `${Math.round((rebated / Math.max(incurred,1)) * 100)}% recovered` : "";
-    document.getElementById("tile-outstanding-sub").textContent =
-      `${rows.filter(c => c.outstanding > 0).length} open`;
+  function renderSortMarks() {
+    document.querySelectorAll(".claims-table thead th[data-sort]").forEach((th) => {
+      const mark = th.querySelector(".sort-mark");
+      if (!mark) return;
+      mark.textContent = th.dataset.sort === state.sortKey ? (state.sortDir > 0 ? "▲" : "▼") : "";
+    });
   }
 
-  function dotHtml(claimId, field, on) {
-    return `<button class="toggle-dot ${on ? "on" : ""}" data-toggle="${field}" data-id="${claimId}" title="${field}">${on ? "●" : ""}</button>`;
+  function renderSummary(scope) {
+    const incurred = scope.reduce((s, r) => s + (r.amount || 0), 0);
+    const rebate = scope.reduce((s, r) => s + (r.amount_rebated || 0), 0);
+    const shortfall = incurred - rebate;
+    document.getElementById("summary").innerHTML = `
+      <div class="stat"><div class="n">${sgd(incurred)}</div><div class="l">Total amount incurred</div></div>
+      <div class="stat"><div class="n">${sgd(rebate)}</div><div class="l">Total rebate</div></div>
+      <div class="stat"><div class="n">${sgd(shortfall)}</div><div class="l">Shortfall</div></div>`;
   }
 
-  function renderTable(rows) {
-    const tbody = document.getElementById("claims-tbody");
-    const empty = document.getElementById("empty-state");
-    if (rows.length === 0) {
-      tbody.innerHTML = "";
-      empty.classList.remove("hidden");
+  // ---------- controls ----------
+
+  function wireControls() {
+    ["filter-from","filter-to","filter-claimant","filter-status","filter-open"].forEach((id) => {
+      document.getElementById(id).addEventListener("change", render);
+    });
+    document.getElementById("filter-search").addEventListener("input", render);
+
+    document.querySelectorAll(".claims-table thead th[data-sort]").forEach((th) => {
+      th.addEventListener("click", () => sortBy(th.dataset.sort));
+    });
+
+    document.getElementById("toggle-archive-btn").addEventListener("click", async () => {
+      state.showArchived = !state.showArchived;
+      const btn = document.getElementById("toggle-archive-btn");
+      btn.textContent = state.showArchived ? "Show active" : "Show archived";
+      btn.classList.toggle("primary", state.showArchived);
+      document.getElementById("arch-banner").classList.toggle("hidden", !state.showArchived);
+      await reload();
+    });
+
+    document.getElementById("new-claim-btn").addEventListener("click", openNew);
+
+    document.getElementById("export-png-btn").addEventListener("click", exportAwaitingPng);
+
+    // table delegation: toggle dots + row actions + invoice + other-docs
+    document.getElementById("claims-tbody").addEventListener("click", onRowClick);
+  }
+
+  async function onRowClick(e) {
+    const flag = e.target.closest(".flag");
+    if (flag) {
+      const fd = new FormData();
+      fd.set("field", flag.dataset.toggle);
+      await api.postForm(`/api/claims/claims/${flag.dataset.id}/toggle`, fd);
+      reload();
       return;
     }
-    empty.classList.add("hidden");
-    tbody.innerHTML = rows.map(c => {
-      const aged = (c.status === "Complete" || c.status === "Excluded") ? "" : (() => {
-        const d = daysSince(c.date_incurred);
-        return d === null ? "" : `<span class="aged-cell">${d}d</span>`;
-      })();
-      const invoiceCell = c.invoice_file
-        ? `<a href="/api/claims/claims/${c.id}/invoice" target="_blank" rel="noopener">View ↗</a>`
-        : `<button class="btn btn-ghost btn-sm" data-action="upload-invoice" data-id="${c.id}">+ Add</button>`;
-      const otherCount = (c.other_files || []).length;
-      const otherCell = `<button class="btn btn-ghost btn-sm" data-action="other-docs" data-id="${c.id}">${otherCount ? `${otherCount} doc${otherCount > 1 ? "s" : ""}` : "+ Add"}</button>`;
-      const actions = state.showArchived
-        ? `<button class="btn btn-ghost btn-sm" data-action="restore" data-id="${c.id}">Restore</button>
-           <button class="btn btn-sm btn-danger" data-action="delete" data-id="${c.id}">Delete</button>`
-        : `<button class="btn btn-ghost btn-sm" data-action="edit" data-id="${c.id}">Edit</button>
-           <button class="btn btn-ghost btn-sm" data-action="archive" data-id="${c.id}">Archive</button>`;
-      const rebatedCell = c.rebated
-        ? fmtCcy(c.amount_rebated, c.currency)
-        : `<span class="muted-dash">—</span>`;
-      return `
-        <tr class="${statusClass(c.status)}">
-          <td>${fmtDate(c.date_incurred)}</td>
-          <td>${aged}</td>
-          <td>${c.claimant}</td>
-          <td>${c.institution}</td>
-          <td class="right amount">${fmtCcy(c.amount, c.currency)}</td>
-          <td class="center">${dotHtml(c.id, "invoice_received", c.invoice_received)}</td>
-          <td class="center">${dotHtml(c.id, "claimed", c.claimed)}</td>
-          <td class="center">${dotHtml(c.id, "rebated", c.rebated)}</td>
-          <td class="center">${dotHtml(c.id, "excluded", c.excluded)}</td>
-          <td class="right amount">${rebatedCell}</td>
-          <td class="right amount">${fmtCcy(c.outstanding, c.currency)}</td>
-          <td>${statusTag(c.status)}</td>
-          <td class="invoice">${invoiceCell}</td>
-          <td>${otherCell}</td>
-          <td class="right"><div class="row-actions">${actions}</div></td>
-        </tr>
-      `;
-    }).join("");
-  }
-
-  // ---------- modal helpers ----------
-
-  function mountTemplate(templateId) {
-    const tpl = document.getElementById(templateId);
-    const fragment = tpl.content.cloneNode(true);
-    const root = document.body.appendChild(document.createElement("div"));
-    root.appendChild(fragment);
-    const close = () => root.remove();
-    root.querySelectorAll('[data-role="close"], [data-role="cancel"]').forEach(b => b.addEventListener("click", close));
-    return { root, close };
-  }
-
-  function fillClaimantSelect(sel) {
-    sel.innerHTML = state.claimants.map(c => `<option value="${c}">${c}</option>`).join("");
-  }
-  function fillInstitutionSelect(sel) {
-    sel.innerHTML = state.institutions.map(i => `<option value="${i}">${i}</option>`).join("") +
-      `<option value="__add__">+ Add new institution…</option>`;
-  }
-
-  function openClaimModal(claim) {
-    const { root, close } = mountTemplate("modal-claim-template");
-    const form = root.querySelector('[data-role="form"]');
-    const title = root.querySelector('[data-role="title"]');
-    const claimantSel = root.querySelector('[data-role="claimant"]');
-    const institutionSel = root.querySelector('[data-role="institution"]');
-    const rebatedCb = root.querySelector('[data-role="rebated-cb"]');
-    const rebatedAmtField = root.querySelector('[data-role="rebated-amount-field"]');
-
-    fillClaimantSelect(claimantSel);
-    fillInstitutionSelect(institutionSel);
-
-    title.textContent = claim ? `Edit claim #${claim.id}` : "New claim";
-
-    if (claim) {
-      claimantSel.value = claim.claimant;
-      institutionSel.value = claim.institution;
-      form.querySelector('[name="date_incurred"]').value = claim.date_incurred || "";
-      form.querySelector('[name="amount"]').value = claim.amount || 0;
-      form.querySelector('[name="currency"]').value = claim.currency || "SGD";
-      form.querySelector('[name="invoice_received"]').checked = !!claim.invoice_received;
-      form.querySelector('[name="claimed"]').checked = !!claim.claimed;
-      form.querySelector('[name="rebated"]').checked = !!claim.rebated;
-      form.querySelector('[name="excluded"]').checked = !!claim.excluded;
-      form.querySelector('[name="amount_rebated"]').value = claim.amount_rebated || 0;
-      form.querySelector('[name="notes"]').value = claim.notes || "";
-      if (claim.rebated) rebatedAmtField.classList.remove("hidden");
-    } else {
-      form.querySelector('[name="date_incurred"]').value = new Date().toISOString().slice(0, 10);
+    const actEl = e.target.closest("[data-action]");
+    if (!actEl) return;
+    const id = Number(actEl.dataset.id);
+    const claim = state.claims.find((c) => c.id === id);
+    switch (actEl.dataset.action) {
+      case "edit": openEdit(claim); break;
+      case "archive":
+        if (!confirm("Archive this entry? The invoice file stays on disk.")) return;
+        await api.del(`/api/claims/claims/${id}`);
+        reload();
+        break;
+      case "restore":
+        await api.postJson(`/api/claims/claims/${id}/restore`, {});
+        reload();
+        break;
+      case "delete": {
+        const desc = claim ? `${claim.claimant} · ${claim.institution} · ${fmtDate(claim.date_incurred)}` : `entry ${id}`;
+        const hasFile = claim && claim.invoice_file;
+        const msg = `Permanently delete this entry?\n\n  ${desc}\n\n`
+          + (hasFile ? `The invoice file (${claim.invoice_file}) will also be deleted from disk.\n\n` : "")
+          + `This cannot be undone.`;
+        if (!confirm(msg)) return;
+        await api.del(`/api/claims/claims/${id}/permanent`);
+        reload();
+        break;
+      }
+      case "upload-invoice": uploadInvoiceFor(id); break;
+      case "other-docs": openOtherDocsModal(claim); break;
     }
+  }
 
-    rebatedCb.addEventListener("change", (e) => {
-      rebatedAmtField.classList.toggle("hidden", !e.target.checked);
+  function uploadInvoiceFor(claimId) {
+    const inp = document.createElement("input");
+    inp.type = "file";
+    inp.accept = ".pdf,.png,.jpg,.jpeg,.heic,.webp";
+    inp.onchange = async () => {
+      if (!inp.files || !inp.files[0]) return;
+      const fd = new FormData();
+      fd.append("file", inp.files[0]);
+      await api.postForm(`/api/claims/claims/${claimId}/invoice`, fd);
+      reload();
+    };
+    inp.click();
+  }
+
+  // ---------- modal ----------
+
+  function wireModal() {
+    document.getElementById("f_rebated").addEventListener("change", (e) => {
+      document.getElementById("rebated-wrap").classList.toggle("hidden", !e.target.checked);
+    });
+    document.getElementById("f_institution").addEventListener("change", handleInstitutionChange);
+    document.getElementById("modal-cancel-btn").addEventListener("click", closeModal);
+    document.getElementById("modal-save-btn").addEventListener("click", save);
+    document.getElementById("claim-overlay").addEventListener("click", (e) => {
+      if (e.target.id === "claim-overlay") closeModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeModal();
     });
 
-    institutionSel.addEventListener("change", async (e) => {
-      if (e.target.value === "__add__") {
-        const newName = await promptInstitution();
-        if (newName) {
-          state.institutions = await api.postJson("/api/claims/institutions", { name: newName });
-          fillInstitutionSelect(institutionSel);
-          institutionSel.value = newName;
-        } else {
-          institutionSel.value = claim ? claim.institution : (state.institutions[0] || "");
-        }
-      }
-    });
-
-    root.querySelector('[data-role="save"]').addEventListener("click", async () => {
-      const fd = new FormData(form);
-      ["invoice_received", "claimed", "rebated", "excluded"].forEach(k => {
-        fd.set(k, form.querySelector(`[name="${k}"]`).checked ? "true" : "false");
-      });
-      if (!form.querySelector('[name="rebated"]').checked) {
-        fd.set("amount_rebated", "0");
-      }
-      try {
-        if (claim) {
-          await api.putForm(`/api/claims/claims/${claim.id}`, fd);
-          toast("Claim updated", "ok");
-        } else {
-          await api.postForm("/api/claims/claims", fd);
-          toast("Claim created", "ok");
-        }
-        close();
-        await reloadClaims();
-      } catch (e) {
-        // toast already shown by api wrapper
-      }
+    document.getElementById("upload-other-btn").addEventListener("click", async () => {
+      const id = document.getElementById("f_id").value;
+      if (!id) { toast("Save the entry first, then attach docs", "warn"); return; }
+      const input = document.getElementById("f_other_doc");
+      if (!input.files || !input.files[0]) { toast("Choose a file first", "warn"); return; }
+      const fd = new FormData();
+      fd.append("file", input.files[0]);
+      const rec = await api.postForm(`/api/claims/claims/${id}/files`, fd);
+      input.value = "";
+      // re-fetch claim row to refresh other_files list
+      const fresh = await api.get(`/api/claims/claims`);
+      const claim = fresh.find((c) => c.id === Number(id));
+      if (claim) renderOtherDocsInModal(claim);
+      state.claims = state.claims.map((c) => (c.id === Number(id) ? { ...c, other_files: (c.other_files || []).concat(rec) } : c));
+      toast("Document attached", "ok");
     });
   }
 
-  function promptInstitution() {
-    return new Promise((resolve) => {
-      const { root, close } = mountTemplate("modal-add-institution-template");
-      const input = root.querySelector('[data-role="name"]');
-      input.focus();
-      root.querySelector('[data-role="save"]').addEventListener("click", () => {
-        const v = input.value.trim();
-        close();
-        resolve(v || null);
-      });
-      root.querySelector('[data-role="close"]').addEventListener("click", () => {
-        close();
-        resolve(null);
+  function openNew() {
+    document.getElementById("modal-title").textContent = "New entry";
+    document.getElementById("f_id").value = "";
+    document.getElementById("f_claimant").value = state.claimants[0] || "";
+    document.getElementById("f_date").value = new Date().toISOString().slice(0, 10);
+    renderInstitutionSelect();
+    document.getElementById("f_amount").value = "";
+    document.getElementById("f_currency").value = "SGD";
+    ["f_received","f_claimed","f_rebated","f_excluded"].forEach((id) => { document.getElementById(id).checked = false; });
+    document.getElementById("f_amount_rebated").value = "";
+    document.getElementById("rebated-wrap").classList.add("hidden");
+    document.getElementById("f_invoice").value = "";
+    document.getElementById("f_notes").value = "";
+    document.getElementById("form-err").textContent = "";
+    document.getElementById("file-hint").textContent = "";
+    document.getElementById("other-docs-section").style.display = "none";
+    document.getElementById("claim-overlay").classList.remove("hidden");
+  }
+
+  function openEdit(claim) {
+    document.getElementById("modal-title").textContent = "Edit entry";
+    document.getElementById("f_id").value = String(claim.id);
+    document.getElementById("f_claimant").value = claim.claimant;
+    document.getElementById("f_date").value = claim.date_incurred;
+    renderInstitutionSelect(claim.institution);
+    document.getElementById("f_amount").value = claim.amount;
+    document.getElementById("f_currency").value = claim.currency;
+    document.getElementById("f_received").checked = !!claim.invoice_received;
+    document.getElementById("f_claimed").checked = !!claim.claimed;
+    document.getElementById("f_rebated").checked = !!claim.rebated;
+    document.getElementById("f_excluded").checked = !!claim.excluded;
+    document.getElementById("f_amount_rebated").value = claim.amount_rebated || "";
+    document.getElementById("rebated-wrap").classList.toggle("hidden", !claim.rebated);
+    document.getElementById("f_invoice").value = "";
+    document.getElementById("file-hint").textContent = claim.invoice_file
+      ? `Current: ${claim.invoice_file} — choose a file only to replace it.` : "";
+    document.getElementById("f_notes").value = claim.notes || "";
+    document.getElementById("form-err").textContent = "";
+    document.getElementById("other-docs-section").style.display = "block";
+    renderOtherDocsInModal(claim);
+    document.getElementById("claim-overlay").classList.remove("hidden");
+  }
+
+  function renderOtherDocsInModal(claim) {
+    const list = document.getElementById("other-docs-list");
+    list.innerHTML = (claim.other_files || []).map((f) => `
+      <li>
+        <a class="linkbtn" href="/api/claims/claims/${claim.id}/files/${f.id}" target="_blank">${esc(f.original_name)}</a>
+        <span class="rowact danger" data-fid="${f.id}">Delete</span>
+      </li>
+    `).join("") || `<li class="nofile">No documents attached.</li>`;
+    list.querySelectorAll("[data-fid]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Delete this document?")) return;
+        await api.del(`/api/claims/claims/${claim.id}/files/${btn.dataset.fid}`);
+        claim.other_files = (claim.other_files || []).filter((f) => String(f.id) !== btn.dataset.fid);
+        renderOtherDocsInModal(claim);
+        reload();
       });
     });
   }
 
   function openOtherDocsModal(claim) {
-    const { root, close } = mountTemplate("modal-other-docs-template");
-    const list = root.querySelector('[data-role="list"]');
-    const fileInput = root.querySelector('[data-role="file"]');
-    const renderList = () => {
-      list.innerHTML = (claim.other_files || []).map(f => `
-        <li>
-          <a href="/api/claims/claims/${claim.id}/files/${f.id}" target="_blank" rel="noopener">${f.original_name}</a>
-          <span class="actions">
-            <button class="btn btn-sm btn-danger" data-fid="${f.id}">Delete</button>
-          </span>
-        </li>
-      `).join("") || `<li class="muted">No documents attached yet.</li>`;
-      list.querySelectorAll("button[data-fid]").forEach(b => {
-        b.addEventListener("click", async () => {
-          if (!confirm("Delete this document?")) return;
-          await api.del(`/api/claims/claims/${claim.id}/files/${b.dataset.fid}`);
-          toast("Document deleted", "ok");
-          await reloadClaims();
-          claim.other_files = (state.claims.concat(state.archivedClaims)
-            .find(c => c.id === claim.id) || claim).other_files;
-          renderList();
-        });
-      });
-    };
-    renderList();
-    root.querySelector('[data-role="upload"]').addEventListener("click", async () => {
-      if (!fileInput.files || fileInput.files.length === 0) {
-        toast("Choose a file first", "warn");
-        return;
-      }
-      const fd = new FormData();
-      fd.append("file", fileInput.files[0]);
-      const rec = await api.postForm(`/api/claims/claims/${claim.id}/files`, fd);
-      claim.other_files = (claim.other_files || []).concat([rec]);
-      fileInput.value = "";
-      toast("Document uploaded", "ok");
-      renderList();
-      reloadClaims();
-    });
+    // Reuse the edit modal but restricted to the other-docs section.
+    openEdit(claim);
   }
 
-  function uploadInvoiceFor(claimId) {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".pdf,.png,.jpg,.jpeg,.heic,.webp";
-    input.addEventListener("change", async () => {
-      if (!input.files || input.files.length === 0) return;
-      const fd = new FormData();
-      fd.append("file", input.files[0]);
-      await api.postForm(`/api/claims/claims/${claimId}/invoice`, fd);
-      toast("Invoice uploaded", "ok");
-      reloadClaims();
-    });
-    input.click();
+  function closeModal() {
+    document.getElementById("claim-overlay").classList.add("hidden");
   }
 
-  // ---------- table interaction ----------
-
-  document.getElementById("claims-tbody").addEventListener("click", async (e) => {
-    const toggleBtn = e.target.closest(".toggle-dot");
-    if (toggleBtn) {
-      const fd = new FormData();
-      fd.set("field", toggleBtn.dataset.toggle);
-      await api.postForm(`/api/claims/claims/${toggleBtn.dataset.id}/toggle`, fd);
-      reloadClaims();
+  async function save() {
+    const id = document.getElementById("f_id").value;
+    const institution = document.getElementById("f_institution").value;
+    if (!institution || institution === ADD_NEW) {
+      document.getElementById("form-err").textContent = "Please pick an institution.";
       return;
     }
-    const actionBtn = e.target.closest("button[data-action]");
-    if (!actionBtn) return;
-    const id = Number(actionBtn.dataset.id);
-    const claim = state.claims.concat(state.archivedClaims).find(c => c.id === id);
-    switch (actionBtn.dataset.action) {
-      case "edit":         openClaimModal(claim); break;
-      case "archive":
-        if (!confirm("Archive this claim?")) return;
-        await api.del(`/api/claims/claims/${id}`);
-        toast("Archived", "ok"); reloadClaims(); break;
-      case "restore":
-        await api.postJson(`/api/claims/claims/${id}/restore`, {});
-        toast("Restored", "ok"); reloadClaims(); break;
-      case "delete":
-        if (!confirm("Permanently delete this claim and all its files?")) return;
-        await api.del(`/api/claims/claims/${id}/permanent`);
-        toast("Deleted", "ok"); reloadClaims(); break;
-      case "upload-invoice":
-        uploadInvoiceFor(id); break;
-      case "other-docs":
-        openOtherDocsModal(claim); break;
+    const fd = new FormData();
+    fd.append("claimant", document.getElementById("f_claimant").value);
+    fd.append("institution", institution);
+    fd.append("date_incurred", document.getElementById("f_date").value);
+    fd.append("amount", document.getElementById("f_amount").value || "0");
+    fd.append("currency", document.getElementById("f_currency").value.trim() || "SGD");
+    fd.append("invoice_received", document.getElementById("f_received").checked ? "true" : "false");
+    fd.append("claimed", document.getElementById("f_claimed").checked ? "true" : "false");
+    fd.append("rebated", document.getElementById("f_rebated").checked ? "true" : "false");
+    fd.append("excluded", document.getElementById("f_excluded").checked ? "true" : "false");
+    fd.append("amount_rebated", document.getElementById("f_amount_rebated").value || "0");
+    fd.append("notes", document.getElementById("f_notes").value);
+    const file = document.getElementById("f_invoice").files[0];
+    if (file) fd.append("invoice", file);
+
+    const saveBtn = document.getElementById("modal-save-btn");
+    saveBtn.disabled = true;
+    try {
+      if (id) await api.putForm(`/api/claims/claims/${id}`, fd);
+      else await api.postForm(`/api/claims/claims`, fd);
+      closeModal();
+      await reload();
+    } finally {
+      saveBtn.disabled = false;
     }
-  });
+  }
 
-  // ---------- filter handlers ----------
+  // ---------- Export PNG (Awaiting invoice rows) ----------
 
-  ["filter-from","filter-to","filter-claimant","filter-status","filter-search"].forEach(id => {
-    document.getElementById(id).addEventListener("input", (e) => {
-      const map = {
-        "filter-from": "from", "filter-to": "to",
-        "filter-claimant": "claimant", "filter-status": "status", "filter-search": "search",
-      };
-      state.filters[map[id]] = e.target.value || (id === "filter-from" || id === "filter-to" ? null : "");
-      render();
+  function exportAwaitingPng() {
+    const dFrom = document.getElementById("filter-from").value;
+    const dTo = document.getElementById("filter-to").value;
+    const rows = state.claims
+      .filter((r) => r.status === "Awaiting invoice"
+        && (!dFrom || r.date_incurred >= dFrom)
+        && (!dTo || r.date_incurred <= dTo))
+      .sort((a, b) => (a.date_incurred < b.date_incurred ? -1 : 1));
+
+    if (!rows.length) { alert("No \"Awaiting invoice\" entries in the selected date range."); return; }
+
+    const cols = [
+      { h: "Date",        get: (r) => fmtDate(r.date_incurred),                       align: "left" },
+      { h: "Claimant",    get: (r) => r.claimant || "",                               align: "left" },
+      { h: "Institution", get: (r) => r.institution || "",                            align: "left" },
+      { h: "Amount",      get: (r) => money(r.amount) + " " + (r.currency || ""),     align: "right" },
+    ];
+
+    const dpr = window.devicePixelRatio || 1;
+    const padX = 14, rowH = 32, headerH = 38;
+    const bodyFont = '14px "Iowan Old Style", Georgia, "Times New Roman", serif';
+    const headFont = '700 12px "Iowan Old Style", Georgia, "Times New Roman", serif';
+
+    const meas = document.createElement("canvas").getContext("2d");
+    const colW = cols.map((c) => {
+      meas.font = headFont;
+      let w = meas.measureText(c.h.toUpperCase()).width;
+      meas.font = bodyFont;
+      for (const r of rows) w = Math.max(w, meas.measureText(String(c.get(r))).width);
+      return Math.ceil(w + padX * 2);
     });
-  });
 
-  document.getElementById("toggle-archive-btn").addEventListener("click", () => {
-    state.showArchived = !state.showArchived;
-    render();
-  });
+    const margin = 12;
+    const tableW = colW.reduce((a, b) => a + b, 0);
+    const tableH = headerH + rows.length * rowH;
+    const W = tableW + margin * 2;
+    const H = tableH + margin * 2;
 
-  document.getElementById("new-claim-btn").addEventListener("click", () => openClaimModal(null));
+    const cvs = document.createElement("canvas");
+    cvs.width = W * dpr; cvs.height = H * dpr;
+    const ctx = cvs.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.textBaseline = "middle";
 
-  // ---------- defaults & boot ----------
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+    ctx.translate(margin, margin);
+    ctx.fillStyle = "#fbfaf6"; ctx.fillRect(0, 0, tableW, tableH);
 
-  const today = new Date();
-  const yearStart = new Date(today.getFullYear(), 0, 1);
-  document.getElementById("filter-from").value = yearStart.toISOString().slice(0, 10);
-  document.getElementById("filter-to").value = today.toISOString().slice(0, 10);
-  state.filters.from = document.getElementById("filter-from").value;
-  state.filters.to = document.getElementById("filter-to").value;
-  state.filters.status = "open";
-  document.getElementById("filter-status").value = "open";
+    // header band
+    ctx.fillStyle = "#e6e1d3"; ctx.fillRect(0, 0, tableW, headerH);
+    ctx.fillStyle = "#1f2a24"; ctx.font = headFont;
+    let x = 0;
+    cols.forEach((c, i) => {
+      ctx.textAlign = c.align;
+      const tx = c.align === "right" ? x + colW[i] - padX : x + padX;
+      ctx.fillText(c.h.toUpperCase(), tx, headerH / 2);
+      x += colW[i];
+    });
 
-  loadAll().catch(err => console.error("Claims boot failed:", err));
+    // rows
+    ctx.font = bodyFont;
+    rows.forEach((r, ri) => {
+      const y = headerH + ri * rowH;
+      ctx.fillStyle = "#e8a8a8"; ctx.fillRect(0, y, tableW, rowH);
+      ctx.fillStyle = "#1f2a24";
+      let cx = 0;
+      cols.forEach((c, i) => {
+        ctx.textAlign = c.align;
+        const tx = c.align === "right" ? cx + colW[i] - padX : cx + padX;
+        ctx.fillText(String(c.get(r)), tx, y + rowH / 2);
+        cx += colW[i];
+      });
+      ctx.strokeStyle = "#ddd9cf"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, y + rowH + 0.5); ctx.lineTo(tableW, y + rowH + 0.5); ctx.stroke();
+    });
+
+    ctx.strokeStyle = "#ddd9cf"; ctx.lineWidth = 1;
+    ctx.strokeRect(0.5, 0.5, tableW - 1, tableH - 1);
+
+    const today = new Date().toISOString().slice(0, 10);
+    cvs.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `mediclaim-awaiting-${today}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  boot().catch((err) => console.error("Claims boot failed:", err));
 })();
