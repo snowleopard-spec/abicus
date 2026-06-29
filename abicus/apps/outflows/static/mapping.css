@@ -1,0 +1,28 @@
+.mapping-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+.mapping-toolbar .input {
+  flex: 1 1 240px;
+  max-width: 320px;
+}
+.mapping-toolbar .spacer { flex: 1; }
+
+#mapping-table .tabulator-cell {
+  cursor: text;
+}
+#mapping-table .tabulator-cell.cell-delete { cursor: pointer; }
+.rowact.danger.inline {
+  background: transparent;
+  border: 0;
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.rowact.danger.inline:hover { background: var(--danger-soft); }

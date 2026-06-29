@@ -115,6 +115,133 @@ def load_history_mapping(
     return out, warnings
 
 
+def load_history_table(path: Path = DEFAULT_PATH) -> list[dict]:
+    """Return history rows as a list of plain dicts:
+    {date: 'YYYY-MM-DD' | '', description: str, amount: float | None, category: str}."""
+    df = load_history_dataframe(path)
+    if df.empty:
+        return []
+    out: list[dict] = []
+    for _, row in df.iterrows():
+        d = row["date"]
+        if pd.isna(d):
+            date_str = ""
+        elif hasattr(d, "isoformat"):
+            date_str = d.isoformat()[:10]
+        else:
+            date_str = str(d)[:10]
+        desc = "" if pd.isna(row["description"]) else str(row["description"])
+        amt = row["amount"]
+        amt_val = None if pd.isna(amt) else float(amt)
+        cat = "" if pd.isna(row["category"]) else str(row["category"]).strip()
+        out.append(
+            {"date": date_str, "description": desc, "amount": amt_val, "category": cat}
+        )
+    return out
+
+
+def save_history_table(
+    rows: list[dict],
+    valid_categories: set[str] | None = None,
+    path: Path = DEFAULT_PATH,
+) -> tuple[int, list[str]]:
+    """Persist a freshly edited history table to disk.
+
+    Rules:
+    - Drops fully-empty rows silently (lets the UI keep a trailing blank row).
+    - Date + description required on any non-empty row.
+    - Amount defaults to 0 if blank/missing.
+    - Category may be blank (means "no exact-match yet, fall through").
+    - If category is filled and `valid_categories` is provided, an unknown
+      category is allowed but reported as a non-fatal warning (matches
+      load_history_mapping's tolerance — those rows get ignored at runtime).
+    - Duplicate descriptions (case-insensitive) keep the first occurrence;
+      drops are reported as warnings.
+
+    Returns (n_rows, warnings). Raises ValueError with row-level detail on
+    validation failure.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+    clean: list[dict] = []
+
+    for i, r in enumerate(rows):
+        ui_row = i + 1
+        date_str = (r.get("date") or "").strip() if isinstance(r.get("date"), str) else (r.get("date") or "")
+        description = (r.get("description") or "").strip()
+        amount_raw = r.get("amount")
+        category = (r.get("category") or "").strip()
+
+        # Fully-empty → silent drop (UI can leave trailing blank rows).
+        if not (date_str or description or amount_raw or category):
+            continue
+
+        if not description:
+            errors.append(f"Row {ui_row}: description is required.")
+            continue
+        if not date_str:
+            errors.append(f"Row {ui_row}: date is required.")
+            continue
+
+        try:
+            date_parsed = pd.to_datetime(date_str)
+        except Exception:
+            errors.append(f"Row {ui_row}: invalid date '{date_str}'.")
+            continue
+
+        if amount_raw in (None, ""):
+            amount_float = 0.0
+        else:
+            try:
+                amount_float = float(amount_raw)
+            except (TypeError, ValueError):
+                errors.append(f"Row {ui_row}: invalid amount '{amount_raw}'.")
+                continue
+
+        if category and category == "Uncategorised":
+            warnings.append(
+                f"Row {ui_row} ('{description}'): 'Uncategorised' is reserved — "
+                "this row will be ignored at categorisation time."
+            )
+        elif category and valid_categories is not None and category not in valid_categories:
+            warnings.append(
+                f"Row {ui_row} ('{description}'): category '{category}' is not in "
+                "categories.txt — this row will be ignored at categorisation time."
+            )
+
+        clean.append(
+            {
+                "date": date_parsed,
+                "description": description,
+                "amount": amount_float,
+                "category": category,
+            }
+        )
+
+    if errors:
+        raise ValueError("History table errors:\n  - " + "\n  - ".join(errors))
+
+    # Dedupe on description (case-insensitive), keep first.
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    n_dupe = 0
+    for r in clean:
+        key = r["description"].lower()
+        if key in seen:
+            n_dupe += 1
+            continue
+        seen.add(key)
+        deduped.append(r)
+    if n_dupe:
+        warnings.append(f"Dropped {n_dupe} duplicate description(s) (case-insensitive match).")
+
+    df = pd.DataFrame(deduped, columns=REQUIRED_COLUMNS)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_excel(path, index=False)
+
+    return len(df), warnings
+
+
 def append_to_history(
     new_rows: pd.DataFrame,
     path: Path = DEFAULT_PATH,

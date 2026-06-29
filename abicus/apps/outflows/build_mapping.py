@@ -204,6 +204,56 @@ def build_mapping_if_changed() -> tuple[bool, int, list[str]]:
     return True, len(mapping), all_warnings
 
 
+def load_mapping_table() -> list[dict]:
+    """Return the mapping rules as a list of {partial_string, category} dicts,
+    preserving the original-case strings from mapping.xlsx. Falls back to
+    mapping.json if xlsx is missing."""
+    if MAPPING_XLSX.exists():
+        df = load_mapping_xlsx().dropna(how="all")
+        df = df.fillna("")
+        df["partial_string"] = df["partial_string"].astype(str)
+        df["category"] = df["category"].astype(str)
+        return df.to_dict("records")
+    if MAPPING_JSON.exists():
+        with MAPPING_JSON.open() as f:
+            mapping = json.load(f)
+        return [{"partial_string": k, "category": v} for k, v in mapping.items()]
+    return []
+
+
+def save_mapping_table(rows: list[dict], valid_categories: set[str]) -> tuple[int, list[str]]:
+    """Persist a freshly edited mapping table to both XLSX and JSON.
+
+    Drops fully-empty rows. Validates using the same rules as a CLI rebuild.
+    Writes XLSX first so JSON's mtime is naturally newer (keeps
+    build_mapping_if_changed from re-running the rebuild on next compile).
+
+    Returns (n_rules, warnings). Raises ValueError with row-level detail on
+    validation failure.
+    """
+    df = pd.DataFrame(rows, columns=["partial_string", "category"])
+    df["partial_string"] = df["partial_string"].fillna("").astype(str)
+    df["category"] = df["category"].fillna("").astype(str)
+    # Drop fully-empty rows so the UI can leave blank entries without erroring.
+    blank = (df["partial_string"].str.strip() == "") & (df["category"].str.strip() == "")
+    df = df[~blank].reset_index(drop=True)
+
+    mapping, warnings = validate_and_build(df, valid_categories)
+
+    CONFIG_DIR.mkdir(exist_ok=True)
+    df_out = df.copy()
+    df_out["partial_string"] = df_out["partial_string"].str.strip()
+    df_out["category"] = df_out["category"].str.strip()
+    df_out.to_excel(MAPPING_XLSX, index=False, engine="openpyxl")
+
+    with MAPPING_JSON.open("w") as f:
+        json.dump(mapping, f, indent=2, sort_keys=True, ensure_ascii=False)
+
+    overlap = report_substring_overlaps(mapping)
+    all_warnings = warnings + [f"Substring overlap: {note}" for note in overlap]
+    return len(mapping), all_warnings
+
+
 def main() -> int:
     print(f"Reading {MAPPING_XLSX.name}...")
     try:

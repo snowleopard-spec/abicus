@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Mapping editor · Abicus{% endblock %}
+{% block page_title %}Mapping editor{% endblock %}
+{% block breadcrumb %}Tools / My Outflows / Mapping editor{% endblock %}
+
+{% block page_actions %}
+<a href="/outflows" class="btn">← Back to dashboard</a>
+<a href="/outflows/history" class="btn">Edit history →</a>
+<button class="btn btn-primary" id="save-btn" disabled>Save changes</button>
+{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator_simple.min.css">
+<link rel="stylesheet" href="/outflows/static/outflows.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/outflows/static/mapping.css?v={{ asset_v }}">
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<p class="caption" style="margin-top:0;">
+  Edit your <code>config/mapping.xlsx</code> directly. Each row is a
+  case-insensitive partial-match rule used to assign a category. Use the
+  filter to find rules, click any cell to edit, and Save when done.
+  Both <code>mapping.xlsx</code> and <code>mapping.json</code> are written
+  atomically.
+</p>
+
+<section class="card">
+  <div class="mapping-toolbar">
+    <input type="search" id="filter" class="input" placeholder="Filter rules…">
+    <span class="caption" id="row-count"></span>
+    <span class="spacer"></span>
+    <button class="btn" id="add-row-btn">+ Add rule</button>
+  </div>
+  <div id="mapping-table"></div>
+</section>
+
+<div id="save-status" class="banner banner-info hidden"></div>
+<div id="save-error" class="banner banner-error hidden"></div>
+
+<details id="warnings-panel" class="panel hidden">
+  <summary id="warnings-summary"></summary>
+  <p class="panel-intro">
+    Non-fatal advisories from the rebuild — your save succeeded. Substring
+    overlaps mean a shorter rule is contained inside a longer one; the longest
+    match wins at categorisation time.
+  </p>
+  <ul id="warnings-list"></ul>
+</details>
+{% endblock %}
+
+{% block scripts %}
+<script src="/outflows/static/mapping.js?v={{ asset_v }}"></script>
+{% endblock %}

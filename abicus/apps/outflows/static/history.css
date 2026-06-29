@@ -1,0 +1,27 @@
+/* Highlight unfilled rows so the user knows what still needs a category */
+#history-table .tabulator-row.row-unfilled {
+  background: var(--warning-soft) !important;
+}
+#history-table .tabulator-row.row-unfilled.tabulator-row-even {
+  background: #FBEFCC !important;
+}
+
+#history-table .tabulator-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+}
+.check-pill input { margin: 0; }

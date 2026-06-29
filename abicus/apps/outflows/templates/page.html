@@ -1,85 +1,187 @@
 {% extends "base.html" %}
-{% block title %}My Outflows · Abicus{% endblock %}
-{% block page_title %}My Outflows{% endblock %}
+{% block title %}Spending Review · Abicus{% endblock %}
+{% block page_title %}Spending Review{% endblock %}
 {% block breadcrumb %}Tools / My Outflows{% endblock %}
 
+{% block page_actions %}
+<a href="/outflows/history" class="btn">Edit history</a>
+<a href="/outflows/mapping" class="btn">Edit mapping</a>
+{% endblock %}
+
 {% block head %}
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/css/tabulator.min.css">
-<link rel="stylesheet" href="/outflows/static/outflows.css">
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/js/tabulator.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator_simple.min.css">
+<link rel="stylesheet" href="/outflows/static/outflows.css?v={{ asset_v }}">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 {% endblock %}
 
 {% block content %}
+<div id="config-error" class="banner banner-error hidden"></div>
+
 <section class="card">
-  <div class="card__header"><h2 class="card__title">1. Choose source files</h2></div>
-  <div class="dropzone" id="dropzone">
-    <strong>Drag &amp; drop CSV / XLSX files here</strong>
-    <div class="muted" style="margin-top:6px;">or <button type="button" class="btn btn-ghost btn-sm" id="browse-btn">Browse files</button></div>
-    <input type="file" id="file-input" multiple accept=".csv,.xls,.xlsx" hidden>
+  <h2>Upload Statements</h2>
+
+  <div id="dropzone" class="dropzone">
+    <div class="dropzone-text">
+      <strong>Drop one or more statement files here</strong>
+      <div class="dropzone-sub">.xlsx · .xls · .csv</div>
+    </div>
+    <button type="button" class="btn" id="browse-btn">Browse files</button>
+    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" hidden>
   </div>
-  <ul id="file-list" class="file-list"></ul>
-  <div class="row" style="margin-top: var(--space-3); justify-content: flex-end;">
-    <button class="btn btn-primary" id="compile-btn" disabled>Compile</button>
+
+  <div id="file-list" class="file-list hidden">
+    <h3>Select account per file</h3>
+    <div id="file-rows"></div>
   </div>
+
+  <button id="compile-btn" type="button" class="btn btn-primary" disabled>Compile</button>
+  <div id="compile-error" class="banner banner-error hidden"></div>
+  <div id="compile-status" class="caption hidden"></div>
 </section>
 
-<section id="results" class="hidden" style="margin-top: var(--space-4);">
-  <div id="warnings" class="col" style="gap: var(--space-3);"></div>
+<section id="results" class="hidden">
+  <div id="mapping-status" class="caption hidden"></div>
 
-  <section class="card" style="margin-top: var(--space-4);">
-    <div class="card__header">
-      <h2 class="card__title">2. Date range</h2>
-      <span class="card__subtitle" id="row-count"></span>
+  <details id="mapping-warnings-panel" class="panel hidden">
+    <summary id="mapping-warnings-summary"></summary>
+    <p class="panel-intro">
+      These are advisory only — the build succeeded. They're surfaced
+      in case anything was unintentional.
+    </p>
+    <ul id="mapping-warnings-list"></ul>
+  </details>
+
+  <details id="history-warnings-panel" class="panel hidden">
+    <summary id="history-warnings-summary"></summary>
+    <p class="panel-intro">
+      These rows have a category that isn't in <code>categories.txt</code>.
+      They've been ignored — the affected transactions fall through to
+      substring matching. Fix the typos and re-Compile to apply.
+    </p>
+    <ul id="history-warnings-list"></ul>
+  </details>
+
+  <div id="unfamiliar-accounts" class="banner banner-warn hidden"></div>
+
+  <section class="card">
+    <h2>Date Range</h2>
+    <div class="date-controls">
+      <input type="date" id="date-from" aria-label="From">
+      <span class="arrow">→</span>
+      <input type="date" id="date-to" aria-label="To">
     </div>
-    <div class="form-row">
-      <div class="field">
-        <label class="field__label" for="date-from">From</label>
-        <input class="input" type="date" id="date-from">
+    <div id="date-caption" class="caption"></div>
+  </section>
+
+  <section class="card">
+    <h2>Summary</h2>
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-label">Total spend</div>
+        <div class="metric-value" id="metric-total">$0.00</div>
       </div>
-      <div class="field">
-        <label class="field__label" for="date-to">To</label>
-        <input class="input" type="date" id="date-to">
+      <div class="metric">
+        <div class="metric-label">Transactions</div>
+        <div class="metric-value" id="metric-count">0</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Unmapped</div>
+        <div class="metric-value" id="metric-unmapped">0 (0%)</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label" title="Counted across the entire upload, not just the selected date range.">Refunds dropped</div>
+        <div class="metric-value" id="metric-refunds">0</div>
       </div>
     </div>
+    <div id="duplicates-caption" class="caption hidden"></div>
+    <div id="exclusions-caption" class="caption hidden"></div>
+    <div id="empty-range" class="banner banner-info hidden"></div>
   </section>
 
-  <section class="tile-grid" style="margin-top: var(--space-4);">
-    <div class="tile"><span class="tile__label">Total spend</span><span class="tile__value" id="tile-total">$0</span><span class="tile__sub" id="tile-total-sub"></span></div>
-    <div class="tile"><span class="tile__label">Transactions</span><span class="tile__value" id="tile-txns">0</span><span class="tile__sub" id="tile-txns-sub"></span></div>
-    <div class="tile"><span class="tile__label">Unmapped</span><span class="tile__value" id="tile-unmapped">0</span><span class="tile__sub" id="tile-unmapped-sub"></span></div>
-    <div class="tile"><span class="tile__label">Dropped (refunds)</span><span class="tile__value" id="tile-dropped">0</span><span class="tile__sub" id="tile-dropped-sub"></span></div>
+  <section class="card">
+    <h2>Spending by Category</h2>
+    <div id="chart"></div>
   </section>
 
-  <section class="card" style="margin-top: var(--space-4);">
-    <div class="card__header"><h2 class="card__title">Category breakdown</h2></div>
-    <div id="chart" style="height: 360px;"></div>
-  </section>
-
-  <section class="card" style="margin-top: var(--space-4);">
-    <div class="card__header">
-      <h2 class="card__title">Categorised transactions</h2>
-      <div class="row">
-        <select class="select" id="filter-category"><option value="">All categories</option></select>
-        <select class="select" id="filter-account"><option value="">All accounts</option></select>
-      </div>
+  <section class="card">
+    <h2>Categorised Transactions</h2>
+    <div class="table-filters">
+      <label>
+        Category
+        <select id="filter-category"></select>
+      </label>
+      <label>
+        Account
+        <select id="filter-account"></select>
+      </label>
     </div>
     <div id="transactions-table"></div>
   </section>
 
-  <section class="card" style="margin-top: var(--space-4);">
-    <div class="card__header"><h2 class="card__title">3. Downloads</h2></div>
-    <div class="row" style="flex-wrap: wrap; gap: var(--space-3);">
-      <button class="btn" id="dl-categorised">⬇ Categorised (.xlsx)</button>
-      <button class="btn" id="dl-unmapped">⬇ Unmapped (.xlsx)</button>
-      <button class="btn" id="dl-html">⬇ HTML snapshot</button>
-      <span class="spacer"></span>
-      <button class="btn btn-primary" id="append-history">Append unmapped to history</button>
+  <details id="unmapped-panel" class="panel">
+    <summary id="unmapped-summary">Unmapped transactions</summary>
+    <p class="panel-intro" id="unmapped-intro"></p>
+    <div id="unmapped-rows" class="mini-table-wrap"></div>
+  </details>
+
+  <details id="excluded-panel" class="panel">
+    <summary id="excluded-summary">Excluded transactions</summary>
+    <p class="panel-intro" id="excluded-intro"></p>
+    <div id="excluded-rows" class="mini-table-wrap"></div>
+  </details>
+
+  <details id="duplicates-panel" class="panel">
+    <summary id="duplicates-summary">Duplicate transactions</summary>
+    <p class="panel-intro" id="duplicates-intro"></p>
+    <div id="duplicates-rows" class="mini-table-wrap"></div>
+  </details>
+
+  <section class="card">
+    <h2>Downloads</h2>
+    <div class="downloads">
+      <div class="download-tile">
+        <button id="dl-categorised" type="button" class="btn btn-primary">
+          Download categorised (Excel)
+        </button>
+        <div class="caption">
+          Dashboard view as Excel — transaction exclusions applied.
+        </div>
+      </div>
+      <div class="download-tile">
+        <button id="dl-unmapped" type="button" class="btn">
+          Download unmapped (Excel)
+        </button>
+        <div class="caption">
+          Unmapped transactions only. Standalone snapshot —
+          does not modify <code>transaction_history.xlsx</code>.
+        </div>
+      </div>
+      <div class="download-tile">
+        <button id="dl-html" type="button" class="btn">
+          Download HTML snapshot
+        </button>
+        <div class="caption">
+          Self-contained file with filter functionality for sharing.
+        </div>
+      </div>
+      <div class="download-tile">
+        <button id="append-history" type="button" class="btn">
+          Append unmapped to history
+        </button>
+        <div class="caption">
+          Appends new unmapped rows to
+          <code>config/transaction_history.xlsx</code>
+          (deduped on description).
+        </div>
+      </div>
     </div>
+    <div id="download-status" class="banner banner-info hidden"></div>
+    <div id="download-error" class="banner banner-error hidden"></div>
   </section>
 </section>
 {% endblock %}
 
 {% block scripts %}
-<script src="/outflows/static/outflows.js"></script>
+<script src="/outflows/static/outflows.js?v={{ asset_v }}"></script>
 {% endblock %}

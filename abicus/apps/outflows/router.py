@@ -11,7 +11,11 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from abicus.apps.outflows.accounts import load_accounts
-from abicus.apps.outflows.build_mapping import build_mapping_if_changed
+from abicus.apps.outflows.build_mapping import (
+    build_mapping_if_changed,
+    load_mapping_table,
+    save_mapping_table,
+)
 from abicus.apps.outflows.categories import load_categories
 from abicus.apps.outflows.categorise import UNCATEGORISED, categorise_dataframe, load_mapping
 from abicus.apps.outflows.html_export import build_html
@@ -19,6 +23,8 @@ from abicus.apps.outflows.transaction_history import (
     DEFAULT_PATH as HISTORY_PATH,
     append_to_history,
     load_history_mapping,
+    load_history_table,
+    save_history_table,
 )
 from abicus.apps.outflows.parsers.format_a import parse as parse_format_a
 from abicus.apps.outflows.parsers.format_b import parse as parse_format_b
@@ -53,6 +59,96 @@ def page(request: Request):
         "outflows/page.html",
         {"active": "outflows"},
     )
+
+
+@views_router.get("/mapping")
+def mapping_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "outflows/mapping.html",
+        {"active": "outflows"},
+    )
+
+
+@views_router.get("/history")
+def history_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "outflows/history.html",
+        {"active": "outflows"},
+    )
+
+
+class MappingRule(BaseModel):
+    partial_string: str
+    category: str
+
+
+class MappingPut(BaseModel):
+    rules: list[MappingRule]
+
+
+@api_router.get("/mapping")
+def api_get_mapping():
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError):
+        valid_cats = set()
+    return {
+        "rules": load_mapping_table(),
+        "categories": sorted(valid_cats),
+    }
+
+
+@api_router.put("/mapping")
+def api_put_mapping(body: MappingPut):
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"categories.txt: {e}")
+    rules = [{"partial_string": r.partial_string, "category": r.category} for r in body.rules]
+    try:
+        n, warnings = save_mapping_table(rules, valid_cats)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "n_rules": n, "warnings": warnings}
+
+
+class HistoryRow(BaseModel):
+    date: str = ""
+    description: str = ""
+    amount: float | None = None
+    category: str = ""
+
+
+class HistoryPut(BaseModel):
+    rows: list[HistoryRow]
+
+
+@api_router.get("/history")
+def api_get_history():
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError):
+        valid_cats = set()
+    return {
+        "rows": load_history_table(),
+        "categories": sorted(valid_cats),
+    }
+
+
+@api_router.put("/history")
+def api_put_history(body: HistoryPut):
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"categories.txt: {e}")
+    payload = [r.model_dump() for r in body.rows]
+    try:
+        n, warnings = save_history_table(payload, valid_cats)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"ok": True, "n_rows": n, "warnings": warnings}
 
 
 @api_router.get("/config")
