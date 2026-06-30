@@ -22,6 +22,15 @@ body[data-active="loan"] {
   --font-sans: "Iowan Old Style", "Iowan Old Style W04", Georgia, "Times New Roman", serif;
   --font-display: var(--font-sans);
 }
+.last-installment-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+@media (max-width: 720px) {
+  .last-installment-row { grid-template-columns: 1fr; }
+}
+
 .kv-table {
   width: 100%;
   border-collapse: collapse;

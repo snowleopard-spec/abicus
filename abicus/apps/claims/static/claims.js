@@ -155,10 +155,6 @@
     // table
     document.getElementById("claims-tbody").innerHTML = rows.map((r) => {
       const aged = daysAged(r);
-      const otherN = (r.other_files || []).length;
-      const otherIcon = `<span class="other-docs-icon ${otherN ? "has" : ""}"
-                              data-action="other-docs" data-id="${r.id}"
-                              title="Attached documents${otherN ? ` (${otherN})` : ""}">📎${otherN ? ` ${otherN}` : ""}</span>`;
       return `
         <tr class="${rowClass(r.status)}">
           <td style="white-space:nowrap">${fmtDate(r.date_incurred)}</td>
@@ -181,7 +177,6 @@
                 : `<button class="file-add" data-action="upload-invoice" data-id="${r.id}" title="Add invoice">+ Add</button>`
           }</td>
           <td style="white-space:nowrap">
-            ${otherIcon}
             ${state.showArchived
               ? `<span class="rowact" data-action="restore" data-id="${r.id}">Restore</span>
                  <span class="rowact danger" data-action="delete" data-id="${r.id}">Delete</span>`
@@ -282,7 +277,6 @@
         break;
       }
       case "upload-invoice": uploadInvoiceFor(id); break;
-      case "other-docs": openOtherDocsModal(claim); break;
     }
   }
 
@@ -394,11 +388,6 @@
         reload();
       });
     });
-  }
-
-  function openOtherDocsModal(claim) {
-    // Reuse the edit modal but restricted to the other-docs section.
-    openEdit(claim);
   }
 
   function closeModal() {

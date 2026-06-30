@@ -309,17 +309,6 @@ body[data-active="claims"] .page-header h1 .dot { color: var(--accent); padding:
 }
 .claims-modal button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
-/* ---------- Other-docs subtle icon (spec §10.4) ---------- */
-.other-docs-icon {
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 5px;
-  font-size: 13px;
-}
-.other-docs-icon:hover { background: var(--claims-grey-soft); color: var(--text-primary); }
-.other-docs-icon.has { color: var(--accent); }
-
 .other-docs-list { list-style: none; padding: 0; margin: 0 0 12px; }
 .other-docs-list li {
   display: flex; justify-content: space-between; align-items: center;
