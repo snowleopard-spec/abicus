@@ -292,6 +292,33 @@ code {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.mini-table th.action-col,
+.mini-table td.action-col {
+  width: 2.2rem;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
+  text-align: center;
+}
+.unsuppress-btn {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.unsuppress-btn:hover {
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+  background: var(--surface-alt);
+}
 
 /* ---------- Downloads ---------- */
 .downloads {

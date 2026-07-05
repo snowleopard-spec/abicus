@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import io
+import os
+import platform
+import subprocess
 import uuid
 from datetime import date, datetime
 from pathlib import Path
@@ -260,15 +263,7 @@ async def api_compile(
     df["date"] = pd.to_datetime(df["date"])
 
     session_id = uuid.uuid4().hex
-    SESSIONS[session_id] = {
-        "df": df,
-        "dropped_negatives": dropped_negatives,
-        "duplicates_count": duplicates_count,
-        "mapping_warnings": mapping_warnings,
-        "history_warnings": history_warnings,
-    }
-
-    return {
+    payload = {
         "session_id": session_id,
         "rows": _df_to_records(df),
         "mapping_status": {"rebuilt": rebuilt, "n_rules": n_rules},
@@ -278,6 +273,29 @@ async def api_compile(
         "duplicates_count": duplicates_count,
         "unfamiliar_accounts": sorted(unfamiliar_accounts),
     }
+    SESSIONS[session_id] = {
+        "df": df,
+        "dropped_negatives": dropped_negatives,
+        "duplicates_count": duplicates_count,
+        "mapping_warnings": mapping_warnings,
+        "history_warnings": history_warnings,
+        "payload": payload,
+    }
+    return payload
+
+
+@api_router.get("/session/{session_id}")
+def api_get_session(session_id: str):
+    """Return the cached compile payload so the client can re-hydrate the
+    dashboard after navigating to Edit mapping / Edit history and back.
+    Returns 404 if the session is gone (server restart / never existed)."""
+    state = SESSIONS.get(session_id)
+    if state is None or "payload" not in state:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found (server may have restarted).",
+        )
+    return state["payload"]
 
 
 def _df_to_records(df: pd.DataFrame) -> list[dict]:
@@ -388,6 +406,28 @@ def api_download_html(session_id: str, body: DateRangeBody):
         media_type="text/html",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@api_router.post("/history/open")
+def api_history_open():
+    """Ask the OS to open transaction_history.xlsx in its default handler
+    (Excel/Numbers). Safe because abicus runs locally as a desktop tool."""
+    if not HISTORY_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"{HISTORY_PATH.name} does not exist yet.",
+        )
+    try:
+        system = platform.system()
+        if system == "Darwin":
+            subprocess.Popen(["open", str(HISTORY_PATH)])
+        elif system == "Windows":
+            os.startfile(str(HISTORY_PATH))  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", str(HISTORY_PATH)])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not open file: {e}")
+    return {"opened": str(HISTORY_PATH)}
 
 
 @api_router.post("/history/append/{session_id}")

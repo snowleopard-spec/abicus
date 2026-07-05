@@ -10,6 +10,10 @@
     scoped: null,                                  // {rows, dedup, dashboardRows}
   };
 
+  // sessionStorage keys — cleared on tab close, per-tab so nothing leaks
+  // across independent sessions.
+  const SS_KEY = "abicus.outflows.session";
+
   // Original earthy chart palette with rust reserved for "Uncategorised".
   const PALETTE = [
     "#8B7355", "#6B8E23", "#8B6F47", "#5C7A5C", "#A0826D",
@@ -41,6 +45,57 @@
     wireDateRange();
     wireTableFilters();
     wireDownloads();
+    await tryRestoreSession();
+  }
+
+  // ---- Session persistence (survives Edit-mapping / Edit-history nav) ----
+  function saveSession() {
+    if (!state.session) return;
+    try {
+      sessionStorage.setItem(SS_KEY, JSON.stringify({
+        session_id: state.session.session_id,
+        dateRange: state.dateRange,
+        tableFilter: state.tableFilter,
+      }));
+    } catch { /* quota / privacy mode — silently ignore */ }
+  }
+  function clearSavedSession() {
+    try { sessionStorage.removeItem(SS_KEY); } catch { /* ignore */ }
+  }
+  async function tryRestoreSession() {
+    let saved;
+    try {
+      const raw = sessionStorage.getItem(SS_KEY);
+      if (!raw) return;
+      saved = JSON.parse(raw);
+    } catch { return; }
+    if (!saved || !saved.session_id) return;
+
+    try {
+      state.session = await api.get(`/api/outflows/session/${saved.session_id}`);
+    } catch {
+      // Server restarted or session expired — clear and boot normally.
+      clearSavedSession();
+      return;
+    }
+
+    stampRowIndices();
+    if (saved.dateRange) state.dateRange = saved.dateRange;
+    if (saved.tableFilter) state.tableFilter = saved.tableFilter;
+
+    const notice = $("restored-notice");
+    notice.textContent =
+      "Restored previous compile. Re-Compile to apply any mapping or " +
+      "history edits made since.";
+    show(notice);
+    renderResults(/* preserveDateRange */ true);
+  }
+
+  // Give every row a stable id so the un-suppress action can flip a
+  // specific row's `duplicate` flag without ambiguity.
+  function stampRowIndices() {
+    if (!state.session || !state.session.rows) return;
+    state.session.rows.forEach((r, i) => { r._idx = i; });
   }
 
   // ---- Dropzone / file list ----
@@ -136,8 +191,11 @@
     }
     try {
       state.session = await api.postForm("/api/outflows/compile", form);
+      stampRowIndices();
+      hide($("restored-notice"));
       hide(statusEl);
       renderResults();
+      saveSession();
     } catch (err) {
       hide(statusEl);
       errEl.textContent = String(err.message || err);
@@ -148,7 +206,7 @@
   }
 
   // ---- Results ----
-  function renderResults() {
+  function renderResults(preserveDateRange = false) {
     show($("results"));
     const s = state.session;
 
@@ -189,12 +247,20 @@
       show($("empty-range"));
       return;
     }
-    state.dateRange.from = dates[0];
-    state.dateRange.to = dates[dates.length - 1];
-    $("date-from").min = state.dateRange.from;
-    $("date-from").max = state.dateRange.to;
-    $("date-to").min = state.dateRange.from;
-    $("date-to").max = state.dateRange.to;
+    const dataFrom = dates[0];
+    const dataTo = dates[dates.length - 1];
+    $("date-from").min = dataFrom;
+    $("date-from").max = dataTo;
+    $("date-to").min = dataFrom;
+    $("date-to").max = dataTo;
+
+    // Keep the user's earlier range if we're restoring and it still fits.
+    const keep = preserveDateRange && state.dateRange.from && state.dateRange.to
+      && state.dateRange.from >= dataFrom && state.dateRange.to <= dataTo;
+    if (!keep) {
+      state.dateRange.from = dataFrom;
+      state.dateRange.to = dataTo;
+    }
     $("date-from").value = state.dateRange.from;
     $("date-to").value = state.dateRange.to;
 
@@ -220,10 +286,12 @@
     $("date-from").addEventListener("change", () => {
       state.dateRange.from = $("date-from").value;
       renderForDateRange();
+      saveSession();
     });
     $("date-to").addEventListener("change", () => {
       state.dateRange.to = $("date-to").value;
       renderForDateRange();
+      saveSession();
     });
   }
 
@@ -320,16 +388,60 @@
     );
 
     const duplicates = dated.filter((r) => r.duplicate);
-    renderMiniPanel(
-      "duplicates-panel", "duplicates-summary", "duplicates-intro", "duplicates-rows",
-      `Duplicate transactions (${duplicates.length})`,
-      duplicates.length
-        ? "These rows were detected as duplicates of earlier rows on the same " +
-          "date with the same amount and description, and excluded from " +
-          "analysis. Common cause: uploading the same statement twice."
-        : "No duplicate transactions in the selected range.",
-      duplicates, ["date", "description", "amount", "account"],
-    );
+    renderDuplicatesPanel(duplicates);
+  }
+
+  function renderDuplicatesPanel(duplicates) {
+    $("duplicates-summary").textContent = `Duplicate transactions (${duplicates.length})`;
+    $("duplicates-intro").textContent = duplicates.length
+      ? "These rows were detected as duplicates of earlier rows on the same " +
+        "date with the same amount and description, and excluded from " +
+        "analysis. Click ⟲ to include a row in the dashboard anyway."
+      : "No duplicate transactions in the selected range.";
+
+    const wrap = $("duplicates-rows");
+    wrap.innerHTML = "";
+    if (duplicates.length === 0) return;
+
+    const table = document.createElement("table");
+    table.className = "mini-table";
+    table.innerHTML =
+      "<thead><tr>" +
+      "<th>Date</th><th>Description</th><th>Amount</th><th>Account</th>" +
+      "<th class=\"action-col\"></th>" +
+      "</tr></thead>";
+    const tbody = document.createElement("tbody");
+    for (const r of duplicates) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
+        `<td>${escapeHtml(String(r.description ?? ""))}</td>` +
+        `<td class="amount">${fmtSGD.format(r.amount)}</td>` +
+        `<td>${escapeHtml(String(r.account ?? ""))}</td>`;
+      const actionCell = document.createElement("td");
+      actionCell.className = "action-col";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "unsuppress-btn";
+      btn.title = "Include this row in the dashboard";
+      btn.setAttribute("aria-label", "Include this duplicate in the dashboard");
+      btn.textContent = "⟲";
+      btn.addEventListener("click", () => unsuppressDuplicate(r._idx));
+      actionCell.appendChild(btn);
+      tr.appendChild(actionCell);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+
+  function unsuppressDuplicate(idx) {
+    if (typeof idx !== "number") return;
+    const target = state.session.rows[idx];
+    if (!target || !target.duplicate) return;
+    target.duplicate = false;
+    state.session.duplicates_count = Math.max(0, (state.session.duplicates_count || 0) - 1);
+    renderForDateRange();
   }
 
   function renderMiniPanel(panelId, summaryId, introId, rowsId, title, intro, rows, cols) {
@@ -415,10 +527,12 @@
     $("filter-category").addEventListener("change", () => {
       state.tableFilter.category = $("filter-category").value;
       if (state.scoped) renderTable(state.scoped.dashboardRows);
+      saveSession();
     });
     $("filter-account").addEventListener("change", () => {
       state.tableFilter.account = $("filter-account").value;
       if (state.scoped) renderTable(state.scoped.dashboardRows);
+      saveSession();
     });
   }
 
@@ -530,9 +644,16 @@
       } else {
         msg = `Appended ${n_added} new row(s) to transaction_history.xlsx.`;
         if (n_skipped) msg += ` Skipped ${n_skipped} duplicate(s).`;
-        msg += " Edit the file in Excel to fill in categories.";
+        msg += " Opening the file for you to fill in categories.";
       }
       showDownloadStatus(msg);
+      if (n_added > 0) {
+        // Fire-and-forget: opening the file happens server-side via `open`
+        // (macOS) / xdg-open / os.startfile. Errors surface as a banner but
+        // don't block the append confirmation above.
+        try { await api.postJson("/api/outflows/history/open", {}); }
+        catch (err) { showDownloadError(String(err.message || err)); }
+      }
     } catch (err) {
       showDownloadError(String(err.message || err));
     }
