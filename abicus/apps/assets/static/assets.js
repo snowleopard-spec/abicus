@@ -350,7 +350,11 @@
       if (!state.session) return;
       if (!confirm("Append all unmapped instruments to mapping_asset_class.csv and mapping_us_situs.csv?")) return;
       const r = await api.postJson(`/api/assets/unmapped/add/${state.session.session_id}`, {});
-      toast(`Added ${r.added_asset_class} to asset_class, ${r.added_us_situs} to us_situs`, "ok");
+      const nChanged = (r.changed_paths || []).length;
+      const suffix = nChanged
+        ? ` — opening ${nChanged} file${nChanged === 1 ? "" : "s"} for editing`
+        : "";
+      toast(`Added ${r.added_asset_class} to asset_class, ${r.added_us_situs} to us_situs${suffix}`, "ok");
     });
   }
 

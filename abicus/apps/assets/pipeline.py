@@ -302,6 +302,7 @@ def saved_meta() -> dict:
 # ----------------------------------------------------------------------
 def append_unmapped_to_mappings(master: pd.DataFrame) -> dict:
     added_ac = added_us = 0
+    changed_paths: list[str] = []
     for csv_path, flag_col, col_name in [
         (CONFIG_DIR / "mapping_asset_class.csv", "Asset Class", "Asset Class"),
         (CONFIG_DIR / "mapping_us_situs.csv", "US Situs Flag", "US Situs Flag"),
@@ -315,11 +316,16 @@ def append_unmapped_to_mappings(master: pd.DataFrame) -> dict:
         ]
         if new_rows:
             pd.concat([existing, pd.DataFrame(new_rows)], ignore_index=True).to_csv(csv_path, index=False)
+            changed_paths.append(str(csv_path))
         if flag_col == "Asset Class":
             added_ac = len(new_rows)
         else:
             added_us = len(new_rows)
-    return {"added_asset_class": added_ac, "added_us_situs": added_us}
+    return {
+        "added_asset_class": added_ac,
+        "added_us_situs": added_us,
+        "changed_paths": changed_paths,
+    }
 
 
 # ----------------------------------------------------------------------
@@ -330,6 +336,10 @@ def fmt_k(value: float) -> str:
 
 
 def generate_pdf(chart_configs, ref_rates, stock_prices, hide_balances=False) -> bytes:
+    """Render the asset-allocation PDF as a 3-column tile grid mirroring the
+    frontend's card layout. Each tile: title, thin stacked bar, and a small
+    swatch/label/balance/weight table with a Total row. Colours come from
+    PLOTLY_COLORS, matching the frontend palette exactly."""
     from reportlab.lib.colors import HexColor
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
@@ -338,144 +348,151 @@ def generate_pdf(chart_configs, ref_rates, stock_prices, hide_balances=False) ->
     buf = io.BytesIO()
     c = rl_canvas.Canvas(buf, pagesize=A4)
     w, h = A4
-    margin = 25 * mm
+    margin = 18 * mm
     usable_w = w - 2 * margin
     olive = HexColor("#556B2F")
     brown = HexColor("#8B7355")
     dark = HexColor("#3D3229")
-    muted = HexColor("#A09080")
     border_color = HexColor("#C4B8A8")
+    row_border = HexColor("#E3DBCB")
 
-    y = h - margin
-    c.setFont("Times-Bold", 22)
-    c.setFillColor(olive)
-    c.drawString(margin, y, f"Asset Allocation as of {date.today().strftime('%d %B %Y')}")
-    y -= 14 * mm
+    # 3-tile grid geometry (matches the frontend's card grid on portrait paper).
+    tiles_per_row = 3
+    tile_gap = 4 * mm
+    tile_w = (usable_w - (tiles_per_row - 1) * tile_gap) / tiles_per_row
 
-    for label, chart in chart_configs:
-        chart_rows = chart["rows"]
-        total = chart["total"]
-        if total == 0:
-            continue
-        block_height = 20 * mm + (len(chart_rows) + 2) * 5 * mm
-        if y - block_height < margin + 40 * mm:
-            c.showPage()
-            y = h - margin
-        c.setFont("Times-Bold", 13)
+    # Per-tile vertical metrics, in mm. Kept as scalars so measure/draw stay in sync.
+    TITLE_H = 5.0
+    BAR_H = 3.5
+    BAR_MARGIN = 2.5
+    HEADER_H = 3.5
+    ROW_H = 3.8
+    TOTAL_H = 5.0
+    TILE_PAD_TOP = 1.0
+    TILE_PAD_BOTTOM = 2.0
+
+    def tile_height_mm(chart):
+        n = len(chart["rows"])
+        return (
+            TILE_PAD_TOP + TITLE_H + BAR_MARGIN + BAR_H + BAR_MARGIN
+            + HEADER_H + n * ROW_H + TOTAL_H + TILE_PAD_BOTTOM
+        )
+
+    def draw_tile(x, y_top, label, chart):
+        """Render one tile with its top-left at (x, y_top). Everything below
+        flows downward inside a tile-wide column."""
+        y = y_top - TILE_PAD_TOP * mm
+
+        # --- Title ---
+        c.setFont("Helvetica-Bold", 9)
         c.setFillColor(dark)
-        c.drawString(margin, y, label)
-        y -= 7 * mm
-        bar_h = 10 * mm
-        x_pos = margin
-        for i, row in enumerate(chart_rows):
-            color = PLOTLY_COLORS[i % len(PLOTLY_COLORS)]
-            pct = row["pct"]
-            seg_w = (pct / 100) * usable_w
-            c.setFillColor(HexColor(color))
-            c.rect(x_pos, y - bar_h, seg_w, bar_h, fill=1, stroke=0)
-            if pct >= 12:
-                c.setFillColor(HexColor("#FFFFFF"))
-                c.setFont("Helvetica", 7)
-                txt = f"{row['label']}: {pct:.1f}%"
-                if c.stringWidth(txt, "Helvetica", 7) < seg_w - 4:
-                    c.drawString(x_pos + 3, y - bar_h + 3, txt)
-            x_pos += seg_w
-        y -= bar_h + 6 * mm
-        col_cat = margin + 8 * mm
-        col_bal = margin + usable_w * 0.7
-        col_wt = margin + usable_w - 2 * mm
-        c.setFont("Helvetica-Bold", 8)
+        title = label
+        max_title_w = tile_w - 1 * mm
+        while c.stringWidth(title, "Helvetica-Bold", 9) > max_title_w and len(title) > 1:
+            title = title[:-1]
+        c.drawString(x, y - 3.5 * mm, title)
+        y -= (TITLE_H + BAR_MARGIN) * mm
+
+        # --- Stacked bar ---
+        bar_top = y
+        bar_bottom = y - BAR_H * mm
+        rows = chart["rows"]
+        cum_x = x
+        for i, row in enumerate(rows):
+            seg_w = (row["pct"] / 100.0) * tile_w
+            c.setFillColor(HexColor(PLOTLY_COLORS[i % len(PLOTLY_COLORS)]))
+            c.rect(cum_x, bar_bottom, seg_w, BAR_H * mm, fill=1, stroke=0)
+            cum_x += seg_w
+        y = bar_bottom - BAR_MARGIN * mm
+
+        # --- Table header ---
+        # Column x-anchors within the tile.
+        swatch_x = x
+        label_x = x + 3.2 * mm
+        wt_x = x + tile_w
+        bal_x = wt_x - 12 * mm if not hide_balances else wt_x
+        # Trim label column right-edge so it doesn't overrun the balance column.
+        label_right_x = (bal_x if not hide_balances else wt_x) - 1 * mm
+
+        c.setFont("Helvetica-Bold", 6.5)
         c.setFillColor(brown)
-        c.drawString(col_cat, y, "Category")
+        c.drawString(label_x, y - 2.5 * mm, "Category")
         if not hide_balances:
-            c.drawRightString(col_bal, y, "Balance (USD)")
-        c.drawRightString(col_wt, y, "Weight")
-        y -= 1.5 * mm
+            c.drawRightString(bal_x, y - 2.5 * mm, "USD")
+        c.drawRightString(wt_x, y - 2.5 * mm, "Weight")
+        y -= HEADER_H * mm
         c.setStrokeColor(border_color)
-        c.setLineWidth(0.5)
-        c.line(margin, y, margin + usable_w, y)
-        y -= 4 * mm
-        c.setFont("Helvetica", 8)
-        for i, row in enumerate(chart_rows):
-            color = PLOTLY_COLORS[i % len(PLOTLY_COLORS)]
-            c.setFillColor(HexColor(color))
-            c.rect(margin, y - 1, 4 * mm, 4 * mm, fill=1, stroke=0)
+        c.setLineWidth(0.4)
+        c.line(x, y + 0.2 * mm, x + tile_w, y + 0.2 * mm)
+
+        # --- Data rows ---
+        c.setFont("Helvetica", 6.8)
+        for i, row in enumerate(rows):
+            row_bottom = y - ROW_H * mm
+            text_y = row_bottom + 1.2 * mm
+
+            # Swatch
+            c.setFillColor(HexColor(PLOTLY_COLORS[i % len(PLOTLY_COLORS)]))
+            c.rect(swatch_x, text_y + 0.2 * mm, 2 * mm, 2 * mm, fill=1, stroke=0)
+
+            # Label — truncate to available width so it doesn't overrun.
             c.setFillColor(dark)
-            c.drawString(col_cat, y, row["label"])
+            lbl = str(row["label"])
+            avail = label_right_x - label_x
+            while c.stringWidth(lbl, "Helvetica", 6.8) > avail and len(lbl) > 1:
+                lbl = lbl[:-1]
+            c.drawString(label_x, text_y, lbl)
+
             if not hide_balances:
-                c.drawRightString(col_bal, y, fmt_k(row["value"]))
-            c.drawRightString(col_wt, y, f"{row['pct']:.1f}%")
-            y -= 4.5 * mm
-        y -= 1.5 * mm
+                c.drawRightString(bal_x, text_y, fmt_k(row["value"]))
+            c.drawRightString(wt_x, text_y, f"{row['pct']:.1f}%")
+
+            # Row divider
+            c.setStrokeColor(row_border)
+            c.setLineWidth(0.3)
+            c.line(x, row_bottom, x + tile_w, row_bottom)
+            y = row_bottom
+
+        # --- Total row ---
+        y_total_top = y
         c.setStrokeColor(border_color)
-        c.line(margin, y + 3.5 * mm, margin + usable_w, y + 3.5 * mm)
-        c.setFont("Helvetica-Bold", 8)
+        c.setLineWidth(0.5)
+        c.line(x, y_total_top, x + tile_w, y_total_top)
+        c.setFont("Helvetica-Bold", 6.8)
         c.setFillColor(brown)
-        c.drawString(col_cat, y, "Total")
+        y_total_text = y_total_top - 3 * mm
+        c.drawString(label_x, y_total_text, "Total")
         if not hide_balances:
-            c.drawRightString(col_bal, y, fmt_k(total))
-        c.drawRightString(col_wt, y, "100.0%")
-        y -= 9 * mm
+            c.drawRightString(bal_x, y_total_text, fmt_k(chart["total"]))
+        c.drawRightString(wt_x, y_total_text, "100.0%")
 
-    if y < margin + 50 * mm:
-        c.showPage()
-        y = h - margin
-    y -= 2 * mm
-    c.setStrokeColor(border_color)
-    c.line(margin, y, margin + usable_w, y)
-    y -= 7 * mm
-    c.setFont("Times-Bold", 12)
-    c.setFillColor(muted)
-    c.drawString(margin, y, "Reference Data")
-    y -= 8 * mm
+    # --- Page header ---
+    def draw_page_header():
+        y0 = h - margin
+        c.setFont("Times-Bold", 20)
+        c.setFillColor(olive)
+        c.drawString(margin, y0 - 8 * mm, f"Asset Allocation as of {date.today().strftime('%d %B %Y')}")
+        return y0 - 14 * mm  # y of the top of the first tile row
 
-    if ref_rates and len(ref_rates) > 1:
-        c.setFont("Helvetica-Bold", 9)
-        c.setFillColor(muted)
-        c.drawString(margin, y, "FX Rates")
-        y -= 5 * mm
-        c.setStrokeColor(border_color)
-        c.setLineWidth(0.5)
-        ref_col1 = margin + 4 * mm
-        ref_col2 = margin + 35 * mm
-        c.setFont("Helvetica-Bold", 8)
-        c.setFillColor(brown)
-        c.drawString(ref_col1, y, "Pair")
-        c.drawString(ref_col2, y, "Rate")
-        y -= 1.5 * mm
-        c.line(margin, y, margin + 60 * mm, y)
-        y -= 4 * mm
-        c.setFont("Helvetica", 8)
-        for ccy in ["GBP", "EUR", "SGD", "AUD", "HKD", "JPY"]:
-            if ccy in ref_rates:
-                c.setFillColor(muted)
-                c.drawString(ref_col1, y, f"{ccy}/USD")
-                c.drawString(ref_col2, y, f"{1/ref_rates[ccy]:.4f}")
-                y -= 4 * mm
-        y -= 3 * mm
+    y = draw_page_header()
 
-    if stock_prices:
-        c.setFont("Helvetica-Bold", 9)
-        c.setFillColor(muted)
-        c.drawString(margin, y, "Stock Prices")
-        y -= 5 * mm
-        c.setStrokeColor(border_color)
-        c.setLineWidth(0.5)
-        ref_col1 = margin + 4 * mm
-        ref_col2 = margin + 35 * mm
-        c.setFont("Helvetica-Bold", 8)
-        c.setFillColor(brown)
-        c.drawString(ref_col1, y, "Ticker")
-        c.drawString(ref_col2, y, "Price")
-        y -= 1.5 * mm
-        c.line(margin, y, margin + 60 * mm, y)
-        y -= 4 * mm
-        c.setFont("Helvetica", 8)
-        for ticker, price in sorted(stock_prices.items()):
-            c.setFillColor(muted)
-            c.drawString(ref_col1, y, ticker)
-            c.drawString(ref_col2, y, f"{price:,.4f}")
-            y -= 4 * mm
+    # --- Tile grid: 3 per row, uniform tile size across the whole PDF so
+    # every panel occupies the same rectangle. Shorter charts leave empty
+    # space at the bottom rather than stretching to fill.
+    non_empty = [(label, ch) for (label, ch) in chart_configs if ch["total"] > 0]
+    uniform_tile_h = (
+        max(tile_height_mm(ch) for _, ch in non_empty) * mm
+        if non_empty else 0
+    )
+    for i in range(0, len(non_empty), tiles_per_row):
+        row_charts = non_empty[i:i + tiles_per_row]
+        if y - uniform_tile_h < margin + 8 * mm:
+            c.showPage()
+            y = draw_page_header()
+        for j, (label, chart) in enumerate(row_charts):
+            x = margin + j * (tile_w + tile_gap)
+            draw_tile(x, y, label, chart)
+        y -= uniform_tile_h + 3 * mm
 
     c.save()
     buf.seek(0)

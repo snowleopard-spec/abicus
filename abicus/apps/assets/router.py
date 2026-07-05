@@ -1,6 +1,10 @@
 import json
+import os
+import platform
+import subprocess
 import uuid
 from datetime import date
+from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
@@ -9,6 +13,24 @@ from pydantic import BaseModel
 from abicus.apps.assets import pipeline
 from abicus.apps.assets.fx_rates import fetch_fx_rates
 from abicus.templating import templates
+
+
+def _open_in_os_default(path: Path) -> None:
+    """Ask the OS to open a file in its default handler. Fire-and-forget —
+    the desktop app runs locally, so this pops the file open on the user's
+    machine. Errors are swallowed since opening is best-effort UX."""
+    if not path.exists():
+        return
+    try:
+        system = platform.system()
+        if system == "Darwin":
+            subprocess.Popen(["open", str(path)])
+        elif system == "Windows":
+            os.startfile(str(path))  # type: ignore[attr-defined]
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+    except Exception:
+        pass
 
 api_router = APIRouter()
 views_router = APIRouter()
@@ -205,4 +227,9 @@ def api_download_excel(session_id: str, opts: DownloadOptions | None = None) -> 
 @api_router.post("/unmapped/add/{session_id}")
 def api_unmapped_add(session_id: str) -> dict:
     session = _session_or_404(session_id)
-    return pipeline.append_unmapped_to_mappings(session["master"])
+    result = pipeline.append_unmapped_to_mappings(session["master"])
+    # Open each mapping CSV that actually got new rows so the user can fill
+    # in the blank Asset Class / US Situs Flag values right away.
+    for p in result.get("changed_paths", []):
+        _open_in_os_default(Path(p))
+    return result
