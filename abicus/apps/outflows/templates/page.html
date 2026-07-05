@@ -4,6 +4,7 @@
 {% block breadcrumb %}Tools / My Outflows{% endblock %}
 
 {% block page_actions %}
+<a href="/outflows/breakdown" class="btn">Monthly breakdown</a>
 <a href="/outflows/history" class="btn">Edit history</a>
 <a href="/outflows/mapping" class="btn">Edit mapping</a>
 {% endblock %}
@@ -174,6 +175,17 @@
           Appends new unmapped rows to
           <code>config/transaction_history.xlsx</code>
           (deduped on description).
+        </div>
+      </div>
+      <div class="download-tile">
+        <button id="db-commit" type="button" class="btn">
+          Commit to database
+        </button>
+        <div class="caption">
+          Upserts all rows in the current Categorised Transactions view into
+          <code>data/transactions.db</code> — the source of truth for the
+          Monthly Breakdown page. Safe to re-commit; matching rows are updated
+          in place.
         </div>
       </div>
     </div>

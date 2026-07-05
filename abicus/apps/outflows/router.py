@@ -13,6 +13,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from abicus.apps.outflows import db
 from abicus.apps.outflows.accounts import load_accounts
 from abicus.apps.outflows.build_mapping import (
     build_mapping_if_changed,
@@ -78,6 +79,15 @@ def history_page(request: Request):
     return templates.TemplateResponse(
         request,
         "outflows/history.html",
+        {"active": "outflows"},
+    )
+
+
+@views_router.get("/breakdown")
+def breakdown_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "outflows/breakdown.html",
         {"active": "outflows"},
     )
 
@@ -315,6 +325,15 @@ class DateRangeBody(BaseModel):
     end_date: date
 
 
+class CommitBody(BaseModel):
+    start_date: date
+    end_date: date
+    # Row indices (into the compile response's rows array) that the client
+    # has overridden via the ⟲ buttons — hidden by default, but committed.
+    unsuppressed_dup_idx: list[int] = []
+    reincluded_excl_idx: list[int] = []
+
+
 def _get_session(session_id: str) -> dict:
     state = SESSIONS.get(session_id)
     if state is None:
@@ -323,6 +342,39 @@ def _get_session(session_id: str) -> dict:
             detail="Unknown or expired session. Re-Compile to continue.",
         )
     return state
+
+
+def _commit_view(
+    state: dict,
+    start_date: date,
+    end_date: date,
+    unsuppressed_dup_idx: list[int],
+    reincluded_excl_idx: list[int],
+) -> pd.DataFrame:
+    """Rebuild the exact set of rows the user sees in the Categorised
+    Transactions table, honouring their per-row ⟲ overrides. Row indices in
+    the override sets refer to positions in the raw compile DataFrame (which
+    is what `_df_to_records` iterates), not into any filtered view."""
+    df: pd.DataFrame = state["df"]
+    mask_range = (df["date"] >= pd.Timestamp(start_date)) & (
+        df["date"] <= pd.Timestamp(end_date)
+    )
+    df_ranged = df[mask_range]
+
+    try:
+        _, excluded = load_categories()
+    except (FileNotFoundError, ValueError):
+        excluded = set()
+
+    unsup = set(unsuppressed_dup_idx)
+    reinc = set(reincluded_excl_idx)
+
+    hidden_dup = df_ranged["duplicate"] & ~df_ranged.index.isin(unsup)
+    hidden_excl = (
+        df_ranged["category"].isin(excluded) & ~df_ranged.index.isin(reinc)
+        if excluded else pd.Series(False, index=df_ranged.index)
+    )
+    return df_ranged[~hidden_dup & ~hidden_excl].reset_index(drop=True)
 
 
 def _scoped_views(state: dict, start_date: date, end_date: date) -> dict:
@@ -447,3 +499,29 @@ def api_history_append(session_id: str, body: DateRangeBody):
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"n_added": n_added, "n_skipped": n_skipped}
+
+
+@api_router.post("/db/commit/{session_id}")
+def api_db_commit(session_id: str, body: CommitBody):
+    """Upsert the currently-visible Categorised Transactions rows into
+    transactions.db. Honours client-side ⟲ overrides so what the user sees
+    is what gets committed."""
+    state = _get_session(session_id)
+    view = _commit_view(
+        state, body.start_date, body.end_date,
+        body.unsuppressed_dup_idx, body.reincluded_excl_idx,
+    )
+    if view.empty:
+        return {"inserted": 0, "updated": 0, "total_in_db": db.upsert([])["total_in_db"]}
+
+    rows = view[CATEGORISED_COLS].copy()
+    rows["date"] = pd.to_datetime(rows["date"]).dt.strftime("%Y-%m-%d")
+    payload = rows.where(pd.notnull(rows), None).to_dict(orient="records")
+    return db.upsert(payload)
+
+
+@api_router.get("/breakdown")
+def api_breakdown():
+    """Return per-category, per-month spending totals from the DB, sorted
+    by lifetime total descending for tile ordering."""
+    return db.load_monthly_breakdown()

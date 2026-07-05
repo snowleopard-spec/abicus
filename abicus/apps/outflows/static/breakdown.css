@@ -1,0 +1,57 @@
+/* Monthly Breakdown — 3-column tile grid mirroring the Assets PDF layout.
+   Uniform tile height across the whole page so short categories leave
+   space at the bottom rather than stretching. */
+
+.breakdown-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.breakdown-tile {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.breakdown-tile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.breakdown-tile-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.breakdown-tile-total {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Reserve room for the chart so tiles are uniform-height regardless of
+   how many months a category has. JS overrides the exact px height via
+   `--tile-chart-h` to match the tallest chart on the page. */
+.breakdown-tile-chart {
+  height: var(--tile-chart-h, 200px);
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .breakdown-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .breakdown-grid { grid-template-columns: 1fr; }
+}

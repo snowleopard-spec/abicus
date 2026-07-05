@@ -684,6 +684,7 @@
       `spending_snapshot_${state.dateRange.from}_${state.dateRange.to}.html`,
     ));
     $("append-history").addEventListener("click", appendHistory);
+    $("db-commit").addEventListener("click", commitToDatabase);
   }
 
   const sessionId = () => (state.session ? state.session.session_id : "");
@@ -733,6 +734,31 @@
         try { await api.postJson("/api/outflows/history/open", {}); }
         catch (err) { showDownloadError(String(err.message || err)); }
       }
+    } catch (err) {
+      showDownloadError(String(err.message || err));
+    }
+  }
+
+  async function commitToDatabase() {
+    if (!state.session) return;
+    clearDownloadBanners();
+    try {
+      const res = await api.postJson(`/api/outflows/db/commit/${sessionId()}`, {
+        start_date: state.dateRange.from,
+        end_date: state.dateRange.to,
+        // Send the client-side ⟲ overrides so what the user sees is what
+        // gets committed. Server rebuilds the visible row set with these.
+        unsuppressed_dup_idx: [...state.unsuppressedDup],
+        reincluded_excl_idx: [...state.reincludedExcl],
+      });
+      const { inserted, updated, total_in_db } = res;
+      const parts = [];
+      if (inserted) parts.push(`${inserted} inserted`);
+      if (updated) parts.push(`${updated} updated`);
+      const summary = parts.length ? parts.join(", ") : "no changes";
+      showDownloadStatus(
+        `Committed to transactions.db — ${summary}. Total rows in DB: ${total_in_db.toLocaleString()}.`,
+      );
     } catch (err) {
       showDownloadError(String(err.message || err));
     }
