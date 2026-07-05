@@ -105,6 +105,17 @@ def upsert(rows: Iterable[dict]) -> dict:
     return {"inserted": inserted, "updated": updated, "total_in_db": int(total)}
 
 
+def clear() -> dict:
+    """Delete every row from the transactions table. Schema stays so the
+    next commit doesn't need to re-init. Returns {"deleted": N}."""
+    if not DB_PATH.exists():
+        return {"deleted": 0}
+    with _connect() as conn:
+        n = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+        conn.execute("DELETE FROM transactions")
+    return {"deleted": int(n)}
+
+
 def load_monthly_breakdown() -> dict:
     """Aggregate the DB into per-category, per-month totals for the
     breakdown page. Returns:

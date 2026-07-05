@@ -525,3 +525,10 @@ def api_breakdown():
     """Return per-category, per-month spending totals from the DB, sorted
     by lifetime total descending for tile ordering."""
     return db.load_monthly_breakdown()
+
+
+@api_router.post("/db/clear")
+def api_db_clear():
+    """Wipe every row from transactions.db. Destructive — the frontend
+    guards this with a confirm() dialog."""
+    return db.clear()

@@ -685,6 +685,7 @@
     ));
     $("append-history").addEventListener("click", appendHistory);
     $("db-commit").addEventListener("click", commitToDatabase);
+    $("db-clear").addEventListener("click", clearDatabase);
   }
 
   const sessionId = () => (state.session ? state.session.session_id : "");
@@ -734,6 +735,22 @@
         try { await api.postJson("/api/outflows/history/open", {}); }
         catch (err) { showDownloadError(String(err.message || err)); }
       }
+    } catch (err) {
+      showDownloadError(String(err.message || err));
+    }
+  }
+
+  async function clearDatabase() {
+    if (!confirm(
+      "Wipe every row from transactions.db? " +
+      "The Monthly Breakdown page will be empty until you commit again.",
+    )) return;
+    clearDownloadBanners();
+    try {
+      const res = await api.postJson("/api/outflows/db/clear", {});
+      showDownloadStatus(
+        `Cleared transactions.db — ${res.deleted.toLocaleString()} row(s) deleted.`,
+      );
     } catch (err) {
       showDownloadError(String(err.message || err));
     }
