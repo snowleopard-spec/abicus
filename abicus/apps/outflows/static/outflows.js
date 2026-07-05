@@ -8,6 +8,10 @@
     tableFilter: { category: "All", account: "All" },
     table: null,
     scoped: null,                                  // {rows, dedup, dashboardRows}
+    // Per-row overrides toggled from the Duplicate / Excluded panels.
+    // Stored as Sets of row _idx so persistence (below) is compact.
+    unsuppressedDup: new Set(),
+    reincludedExcl: new Set(),
   };
 
   // sessionStorage keys — cleared on tab close, per-tab so nothing leaks
@@ -56,6 +60,8 @@
         session_id: state.session.session_id,
         dateRange: state.dateRange,
         tableFilter: state.tableFilter,
+        unsuppressedDup: [...state.unsuppressedDup],
+        reincludedExcl: [...state.reincludedExcl],
       }));
     } catch { /* quota / privacy mode — silently ignore */ }
   }
@@ -82,6 +88,20 @@
     stampRowIndices();
     if (saved.dateRange) state.dateRange = saved.dateRange;
     if (saved.tableFilter) state.tableFilter = saved.tableFilter;
+    // Re-apply per-row overrides. Silently drop any indices that no longer
+    // exist (shouldn't happen unless the payload shape changed).
+    for (const idx of saved.unsuppressedDup || []) {
+      const r = state.session.rows[idx];
+      if (r) { r.duplicate = false; state.unsuppressedDup.add(idx); }
+    }
+    for (const idx of saved.reincludedExcl || []) {
+      const r = state.session.rows[idx];
+      if (r) { r._reincluded = true; state.reincludedExcl.add(idx); }
+    }
+    // Duplicates count is a stored summary — decrement for restored un-suppresses.
+    state.session.duplicates_count = Math.max(
+      0, (state.session.duplicates_count || 0) - state.unsuppressedDup.size,
+    );
 
     const notice = $("restored-notice");
     notice.textContent =
@@ -192,6 +212,9 @@
     try {
       state.session = await api.postForm("/api/outflows/compile", form);
       stampRowIndices();
+      // Fresh session — clear any prior overrides.
+      state.unsuppressedDup = new Set();
+      state.reincludedExcl = new Set();
       hide($("restored-notice"));
       hide(statusEl);
       renderResults();
@@ -307,7 +330,10 @@
     const rows = state.session.rows.filter(inRange);
     const dedup = rows.filter((r) => !r.duplicate);
     const excluded = new Set(state.config.excluded || []);
-    const dashboardRows = excluded.size ? dedup.filter((r) => !excluded.has(r.category)) : dedup;
+    // A row is hidden from the dashboard iff its category is excluded AND the
+    // user hasn't re-included it individually via the ⟲ button.
+    const isHidden = (r) => excluded.has(r.category) && !r._reincluded;
+    const dashboardRows = excluded.size ? dedup.filter((r) => !isHidden(r)) : dedup;
 
     if (rows.length === 0) {
       $("empty-range").textContent = `No transactions in selected range (${from} to ${to}).`;
@@ -334,13 +360,14 @@
       show(dupCap);
     } else hide(dupCap);
 
-    // Exclusions caption
+    // Exclusions caption — counts only rows that are still hidden after any
+    // per-row re-inclusions.
     const excCap = $("exclusions-caption");
     if (excluded.size) {
-      const excludedInData = [...new Set(dedup.map((r) => r.category))].filter((c) => excluded.has(c));
-      excludedInData.sort();
+      const hiddenRows = dedup.filter(isHidden);
+      const excludedInData = [...new Set(hiddenRows.map((r) => r.category))].sort();
       if (excludedInData.length) {
-        const nHidden = dedup.filter((r) => excluded.has(r.category)).length;
+        const nHidden = hiddenRows.length;
         excCap.textContent =
           `Hidden from dashboard: ${excludedInData.join(", ")} ` +
           `(${nHidden} transaction${nHidden !== 1 ? "s" : ""}). ` +
@@ -368,7 +395,9 @@
       unmapped, ["date", "description", "amount", "account"],
     );
 
-    const excludedRows = excluded.size ? dedup.filter((r) => excluded.has(r.category)) : [];
+    const excludedRows = excluded.size
+      ? dedup.filter((r) => excluded.has(r.category) && !r._reincluded)
+      : [];
     let excludedIntro;
     if (!excluded.size) {
       excludedIntro = "No categories are flagged as excluded in categories.txt.";
@@ -378,17 +407,65 @@
       excludedIntro =
         "These transactions are hidden from the dashboard view because " +
         "their category is flagged with ,exclude in categories.txt. " +
-        "They are still included in the downloads.";
+        "They are still included in the downloads. Click ⟲ to include a " +
+        "row in the dashboard anyway.";
     }
-    renderMiniPanel(
-      "excluded-panel", "excluded-summary", "excluded-intro", "excluded-rows",
-      `Excluded transactions (${excludedRows.length})`,
-      excludedIntro,
-      excludedRows, ["date", "description", "amount", "category", "account"],
-    );
+    renderExcludedPanel(excludedRows, excludedIntro);
 
     const duplicates = dated.filter((r) => r.duplicate);
     renderDuplicatesPanel(duplicates);
+  }
+
+  function renderExcludedPanel(excludedRows, intro) {
+    $("excluded-summary").textContent = `Excluded transactions (${excludedRows.length})`;
+    $("excluded-intro").textContent = intro;
+
+    const wrap = $("excluded-rows");
+    wrap.innerHTML = "";
+    if (excludedRows.length === 0) return;
+
+    const table = document.createElement("table");
+    table.className = "mini-table";
+    table.innerHTML =
+      "<thead><tr>" +
+      "<th>Date</th><th>Description</th><th>Amount</th>" +
+      "<th>Category</th><th>Account</th>" +
+      "<th class=\"action-col\"></th>" +
+      "</tr></thead>";
+    const tbody = document.createElement("tbody");
+    for (const r of excludedRows) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
+        `<td>${escapeHtml(String(r.description ?? ""))}</td>` +
+        `<td class="amount">${fmtSGD.format(r.amount)}</td>` +
+        `<td>${escapeHtml(String(r.category ?? ""))}</td>` +
+        `<td>${escapeHtml(String(r.account ?? ""))}</td>`;
+      const actionCell = document.createElement("td");
+      actionCell.className = "action-col";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "unsuppress-btn";
+      btn.title = "Include this row in the dashboard";
+      btn.setAttribute("aria-label", "Include this excluded transaction in the dashboard");
+      btn.textContent = "⟲";
+      btn.addEventListener("click", () => reincludeExcluded(r._idx));
+      actionCell.appendChild(btn);
+      tr.appendChild(actionCell);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+
+  function reincludeExcluded(idx) {
+    if (typeof idx !== "number") return;
+    const target = state.session.rows[idx];
+    if (!target || target._reincluded) return;
+    target._reincluded = true;
+    state.reincludedExcl.add(idx);
+    saveSession();
+    renderForDateRange();
   }
 
   function renderDuplicatesPanel(duplicates) {
@@ -440,7 +517,9 @@
     const target = state.session.rows[idx];
     if (!target || !target.duplicate) return;
     target.duplicate = false;
+    state.unsuppressedDup.add(idx);
     state.session.duplicates_count = Math.max(0, (state.session.duplicates_count || 0) - 1);
+    saveSession();
     renderForDateRange();
   }
 
