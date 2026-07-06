@@ -18,10 +18,12 @@
   // across independent sessions.
   const SS_KEY = "abicus.outflows.session";
 
-  // Original earthy chart palette with rust reserved for "Uncategorised".
+  // Lighter earthy palette, kept in sync with breakdown.js and pdf_export.py.
+  // Rust reserved for "Uncategorised" so it stays visually distinctive.
   const PALETTE = [
-    "#8B7355", "#6B8E23", "#8B6F47", "#5C7A5C", "#A0826D",
-    "#7B6F5C", "#9B7E5A", "#6B5D4F", "#A89070", "#5D6B4E",
+    "#B49F7A", "#95B54F", "#B49877", "#8AA88A", "#BFA294",
+    "#A59988", "#BFA284", "#968878", "#C4AE94", "#8FA075",
+    "#C4B08C", "#8FA8A0", "#A0B482", "#B8C594",
   ];
   const UNCAT_COLOUR = "#C77B4F";
   const UNCAT = "Uncategorised";

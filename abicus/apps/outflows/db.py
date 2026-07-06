@@ -116,9 +116,15 @@ def clear() -> dict:
     return {"deleted": int(n)}
 
 
-def load_monthly_breakdown() -> dict:
+def load_monthly_breakdown(selected_months: list[str] | None = None) -> dict:
     """Aggregate the DB into per-category, per-month totals for the
-    breakdown page. Returns:
+    breakdown page.
+
+    If `selected_months` is given, restrict to that set (used by the PDF
+    export so the report matches what's currently on-screen). Categories
+    with zero spend in the selection drop out.
+
+    Returns:
         {
           "months": ["2026-01", "2026-02", ...],           # sorted asc
           "by_category": {cat: {month: total, ...}, ...},  # sparse
@@ -136,16 +142,23 @@ def load_monthly_breakdown() -> dict:
                GROUP BY month, category
                ORDER BY month ASC"""
         ).fetchall()
+
+    filter_set = set(selected_months) if selected_months is not None else None
+
     months: list[str] = []
     seen_months: set[str] = set()
     by_category: dict[str, dict[str, float]] = {}
     lifetime: dict[str, float] = {}
     for r in rows:
         m, cat, total = r["month"], r["category"], float(r["total"])
+        if filter_set is not None and m not in filter_set:
+            continue
         if m not in seen_months:
             seen_months.add(m)
             months.append(m)
         by_category.setdefault(cat, {})[m] = total
         lifetime[cat] = lifetime.get(cat, 0.0) + total
     lifetime = dict(sorted(lifetime.items(), key=lambda kv: kv[1], reverse=True))
+    # Drop categories that have no rows in the selection.
+    by_category = {k: v for k, v in by_category.items() if k in lifetime}
     return {"months": months, "by_category": by_category, "lifetime_totals": lifetime}

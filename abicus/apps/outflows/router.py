@@ -13,7 +13,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from abicus.apps.outflows import db
+from abicus.apps.outflows import db, pdf_export
 from abicus.apps.outflows.accounts import load_accounts
 from abicus.apps.outflows.build_mapping import (
     build_mapping_if_changed,
@@ -532,3 +532,26 @@ def api_db_clear():
     """Wipe every row from transactions.db. Destructive — the frontend
     guards this with a confirm() dialog."""
     return db.clear()
+
+
+class BreakdownPdfBody(BaseModel):
+    selected_months: list[str] = []
+
+
+@api_router.post("/breakdown/pdf")
+def api_breakdown_pdf(body: BreakdownPdfBody):
+    """Render the Monthly Breakdown as a PDF using the same month selection
+    the user has on-screen. Client sends the currently-checked months so the
+    report matches the view."""
+    data = db.load_monthly_breakdown(
+        selected_months=body.selected_months or None,
+    )
+    pdf_bytes = pdf_export.render(data)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="monthly_breakdown_{stamp}.pdf"',
+        },
+    )

@@ -2,11 +2,85 @@
    Uniform tile height across the whole page so short categories leave
    space at the bottom rather than stretching. */
 
+/* ---------- Controls (month picker) ---------- */
+.breakdown-controls {
+  margin-bottom: 1rem;
+}
+.month-picker {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.month-picker-label {
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-right: 0.25rem;
+}
+.month-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+.month-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-app);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.month-chip input {
+  display: none;
+}
+.month-chip.is-on {
+  background: #8B7355;
+  border-color: #8B7355;
+  color: white;
+}
+.month-chip:hover { border-color: var(--text-muted); }
+.month-chip.is-on:hover { background: #6B5D4F; border-color: #6B5D4F; }
+.chip-shortcut {
+  padding: 0.25rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.chip-shortcut:hover { border-color: var(--text-primary); color: var(--text-primary); }
+
+/* ---------- Grid ---------- */
 .breakdown-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   align-items: stretch;
+}
+/* Full-width monthly total panel at the top of the grid. */
+.breakdown-tile-total {
+  grid-column: 1 / -1;
+  background: #FBF7EF;
+  border-color: #D6C9B0;
+}
+.breakdown-tile-total .breakdown-tile-title {
+  font-size: 1.05rem;
+}
+.breakdown-tile-total .breakdown-tile-chart {
+  height: var(--total-chart-h, 320px);
 }
 
 .breakdown-tile {

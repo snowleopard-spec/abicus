@@ -5,6 +5,7 @@
 
 {% block page_actions %}
 <a href="/outflows" class="btn">← Back to dashboard</a>
+<button type="button" id="export-pdf-btn" class="btn btn-primary">Export PDF</button>
 {% endblock %}
 
 {% block head %}
@@ -20,6 +21,15 @@
   <strong>Commit to database</strong> to populate the source of truth.
 </div>
 <div id="breakdown-error" class="banner banner-error hidden"></div>
+
+<div id="breakdown-controls" class="breakdown-controls hidden">
+  <div class="month-picker">
+    <span class="month-picker-label">Months:</span>
+    <div id="month-chips" class="month-chips"></div>
+    <button type="button" id="chip-all" class="chip-shortcut">All</button>
+    <button type="button" id="chip-none" class="chip-shortcut">None</button>
+  </div>
+</div>
 
 <div id="breakdown-grid" class="breakdown-grid hidden"></div>
 {% endblock %}
