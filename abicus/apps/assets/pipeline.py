@@ -356,18 +356,19 @@ def generate_pdf(chart_configs, ref_rates, stock_prices, hide_balances=False) ->
     border_color = HexColor("#C4B8A8")
     row_border = HexColor("#E3DBCB")
 
-    # 3-tile grid geometry (matches the frontend's card grid on portrait paper).
-    tiles_per_row = 3
-    tile_gap = 4 * mm
+    # 2-tile grid geometry — wider tiles for more readable stacked bars and
+    # legend tables.
+    tiles_per_row = 2
+    tile_gap = 5 * mm
     tile_w = (usable_w - (tiles_per_row - 1) * tile_gap) / tiles_per_row
 
     # Per-tile vertical metrics, in mm. Kept as scalars so measure/draw stay in sync.
-    TITLE_H = 5.0
+    TITLE_H = 5.5
     BAR_H = 3.5
-    BAR_MARGIN = 2.5
-    HEADER_H = 3.5
-    ROW_H = 3.8
-    TOTAL_H = 5.0
+    BAR_MARGIN = 3.0
+    HEADER_H = 4.5
+    ROW_H = 4.8
+    TOTAL_H = 6.0
     TILE_PAD_TOP = 1.0
     TILE_PAD_BOTTOM = 2.0
 
@@ -384,13 +385,13 @@ def generate_pdf(chart_configs, ref_rates, stock_prices, hide_balances=False) ->
         y = y_top - TILE_PAD_TOP * mm
 
         # --- Title ---
-        c.setFont("Helvetica-Bold", 9)
+        c.setFont("Helvetica-Bold", 11)
         c.setFillColor(dark)
         title = label
         max_title_w = tile_w - 1 * mm
-        while c.stringWidth(title, "Helvetica-Bold", 9) > max_title_w and len(title) > 1:
+        while c.stringWidth(title, "Helvetica-Bold", 11) > max_title_w and len(title) > 1:
             title = title[:-1]
-        c.drawString(x, y - 3.5 * mm, title)
+        c.drawString(x, y - 4 * mm, title)
         y -= (TITLE_H + BAR_MARGIN) * mm
 
         # --- Stacked bar ---
@@ -414,32 +415,32 @@ def generate_pdf(chart_configs, ref_rates, stock_prices, hide_balances=False) ->
         # Trim label column right-edge so it doesn't overrun the balance column.
         label_right_x = (bal_x if not hide_balances else wt_x) - 1 * mm
 
-        c.setFont("Helvetica-Bold", 6.5)
+        c.setFont("Helvetica-Bold", 8)
         c.setFillColor(brown)
-        c.drawString(label_x, y - 2.5 * mm, "Category")
+        c.drawString(label_x, y - 3 * mm, "Category")
         if not hide_balances:
-            c.drawRightString(bal_x, y - 2.5 * mm, "USD")
-        c.drawRightString(wt_x, y - 2.5 * mm, "Weight")
+            c.drawRightString(bal_x, y - 3 * mm, "USD")
+        c.drawRightString(wt_x, y - 3 * mm, "Weight")
         y -= HEADER_H * mm
         c.setStrokeColor(border_color)
         c.setLineWidth(0.4)
         c.line(x, y + 0.2 * mm, x + tile_w, y + 0.2 * mm)
 
         # --- Data rows ---
-        c.setFont("Helvetica", 6.8)
+        c.setFont("Helvetica", 8.5)
         for i, row in enumerate(rows):
             row_bottom = y - ROW_H * mm
-            text_y = row_bottom + 1.2 * mm
+            text_y = row_bottom + 1.4 * mm
 
             # Swatch
             c.setFillColor(HexColor(PLOTLY_COLORS[i % len(PLOTLY_COLORS)]))
-            c.rect(swatch_x, text_y + 0.2 * mm, 2 * mm, 2 * mm, fill=1, stroke=0)
+            c.rect(swatch_x, text_y + 0.3 * mm, 2.4 * mm, 2.4 * mm, fill=1, stroke=0)
 
             # Label — truncate to available width so it doesn't overrun.
             c.setFillColor(dark)
             lbl = str(row["label"])
             avail = label_right_x - label_x
-            while c.stringWidth(lbl, "Helvetica", 6.8) > avail and len(lbl) > 1:
+            while c.stringWidth(lbl, "Helvetica", 8.5) > avail and len(lbl) > 1:
                 lbl = lbl[:-1]
             c.drawString(label_x, text_y, lbl)
 
@@ -458,9 +459,9 @@ def generate_pdf(chart_configs, ref_rates, stock_prices, hide_balances=False) ->
         c.setStrokeColor(border_color)
         c.setLineWidth(0.5)
         c.line(x, y_total_top, x + tile_w, y_total_top)
-        c.setFont("Helvetica-Bold", 6.8)
+        c.setFont("Helvetica-Bold", 9)
         c.setFillColor(brown)
-        y_total_text = y_total_top - 3 * mm
+        y_total_text = y_total_top - 3.8 * mm
         c.drawString(label_x, y_total_text, "Total")
         if not hide_balances:
             c.drawRightString(bal_x, y_total_text, fmt_k(chart["total"]))
