@@ -1,4 +1,4 @@
-abicus/apps/*/config/
+abicus/apps/*/config/*
 abicus/apps/*/data/
 !abicus/apps/*/config/*.example
 __pycache__/
