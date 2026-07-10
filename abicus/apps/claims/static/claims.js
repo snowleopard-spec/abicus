@@ -122,27 +122,36 @@
     render();
   }
 
+  function currentFilterValues() {
+    return {
+      q: document.getElementById("filter-search").value.toLowerCase().trim(),
+      fcl: document.getElementById("filter-claimant").value,
+      fst: document.getElementById("filter-status").value,
+      fop: document.getElementById("filter-open").value,
+      dFrom: document.getElementById("filter-from").value,
+      dTo: document.getElementById("filter-to").value,
+    };
+  }
+
+  function filterClaims(claims, f) {
+    const inWindow = claims.filter((r) => {
+      if (f.dFrom && r.date_incurred < f.dFrom) return false;
+      if (f.dTo && r.date_incurred > f.dTo) return false;
+      return true;
+    });
+    const rows = inWindow.filter((r) => {
+      if (f.fcl && r.claimant !== f.fcl) return false;
+      if (f.fst && r.status !== f.fst) return false;
+      if (f.fop === "open" && r.status === "Complete") return false;
+      if (f.q && !(r.institution.toLowerCase().includes(f.q) || (r.notes || "").toLowerCase().includes(f.q))) return false;
+      return true;
+    });
+    return { inWindow, rows };
+  }
+
   function render() {
-    const q = document.getElementById("filter-search").value.toLowerCase().trim();
-    const fcl = document.getElementById("filter-claimant").value;
-    const fst = document.getElementById("filter-status").value;
-    const fop = document.getElementById("filter-open").value;
-    const dFrom = document.getElementById("filter-from").value;
-    const dTo = document.getElementById("filter-to").value;
-
-    const inWindow = state.claims.filter((r) => {
-      if (dFrom && r.date_incurred < dFrom) return false;
-      if (dTo && r.date_incurred > dTo) return false;
-      return true;
-    });
-
-    let rows = inWindow.filter((r) => {
-      if (fcl && r.claimant !== fcl) return false;
-      if (fst && r.status !== fst) return false;
-      if (fop === "open" && r.status === "Complete") return false;
-      if (q && !(r.institution.toLowerCase().includes(q) || (r.notes || "").toLowerCase().includes(q))) return false;
-      return true;
-    });
+    const { inWindow, rows: rowsUnsorted } = filterClaims(state.claims, currentFilterValues());
+    let rows = rowsUnsorted;
 
     const getSort = (r, k) => (k === "days_aged" ? (daysAged(r) ?? -Infinity) : r[k]);
     rows.sort((a, b) => {
@@ -235,7 +244,7 @@
 
     document.getElementById("new-claim-btn").addEventListener("click", openNew);
 
-    document.getElementById("export-png-btn").addEventListener("click", exportAwaitingPng);
+    document.getElementById("export-html-btn").addEventListener("click", exportDashboardHtml);
 
     // table delegation: toggle dots + row actions + invoice + other-docs
     document.getElementById("claims-tbody").addEventListener("click", onRowClick);
@@ -428,95 +437,295 @@
     }
   }
 
-  // ---------- Export PNG (Awaiting invoice rows) ----------
+  // ---------- Export HTML (self-contained interactive dashboard snapshot) ----------
 
-  function exportAwaitingPng() {
-    const dFrom = document.getElementById("filter-from").value;
-    const dTo = document.getElementById("filter-to").value;
-    const rows = state.claims
-      .filter((r) => r.status === "Awaiting invoice"
-        && (!dFrom || r.date_incurred >= dFrom)
-        && (!dTo || r.date_incurred <= dTo))
-      .sort((a, b) => (a.date_incurred < b.date_incurred ? -1 : 1));
+  function exportDashboardHtml() {
+    // Seed the exported file with the currently-visible row set. The user can
+    // narrow further from within the exported HTML, but archived rows and rows
+    // outside the on-screen filter are baked out at export time.
+    const initFilters = currentFilterValues();
+    const { rows } = filterClaims(state.claims, initFilters);
 
-    if (!rows.length) { alert("No \"Awaiting invoice\" entries in the selected date range."); return; }
+    if (!rows.length) {
+      alert("Nothing to export — the current filter has no rows.");
+      return;
+    }
 
-    const cols = [
-      { h: "Date",        get: (r) => fmtDate(r.date_incurred),                       align: "left" },
-      { h: "Claimant",    get: (r) => r.claimant || "",                               align: "left" },
-      { h: "Institution", get: (r) => r.institution || "",                            align: "left" },
-      { h: "Amount",      get: (r) => money(r.amount) + " " + (r.currency || ""),     align: "right" },
-    ];
-
-    const dpr = window.devicePixelRatio || 1;
-    const padX = 14, rowH = 32, headerH = 38;
-    const bodyFont = '14px "Iowan Old Style", Georgia, "Times New Roman", serif';
-    const headFont = '700 12px "Iowan Old Style", Georgia, "Times New Roman", serif';
-
-    const meas = document.createElement("canvas").getContext("2d");
-    const colW = cols.map((c) => {
-      meas.font = headFont;
-      let w = meas.measureText(c.h.toUpperCase()).width;
-      meas.font = bodyFont;
-      for (const r of rows) w = Math.max(w, meas.measureText(String(c.get(r))).width);
-      return Math.ceil(w + padX * 2);
-    });
-
-    const margin = 12;
-    const tableW = colW.reduce((a, b) => a + b, 0);
-    const tableH = headerH + rows.length * rowH;
-    const W = tableW + margin * 2;
-    const H = tableH + margin * 2;
-
-    const cvs = document.createElement("canvas");
-    cvs.width = W * dpr; cvs.height = H * dpr;
-    const ctx = cvs.getContext("2d");
-    ctx.scale(dpr, dpr);
-    ctx.textBaseline = "middle";
-
-    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
-    ctx.translate(margin, margin);
-    ctx.fillStyle = "#fbfaf6"; ctx.fillRect(0, 0, tableW, tableH);
-
-    // header band
-    ctx.fillStyle = "#e6e1d3"; ctx.fillRect(0, 0, tableW, headerH);
-    ctx.fillStyle = "#1f2a24"; ctx.font = headFont;
-    let x = 0;
-    cols.forEach((c, i) => {
-      ctx.textAlign = c.align;
-      const tx = c.align === "right" ? x + colW[i] - padX : x + padX;
-      ctx.fillText(c.h.toUpperCase(), tx, headerH / 2);
-      x += colW[i];
-    });
-
-    // rows
-    ctx.font = bodyFont;
-    rows.forEach((r, ri) => {
-      const y = headerH + ri * rowH;
-      ctx.fillStyle = "#e8a8a8"; ctx.fillRect(0, y, tableW, rowH);
-      ctx.fillStyle = "#1f2a24";
-      let cx = 0;
-      cols.forEach((c, i) => {
-        ctx.textAlign = c.align;
-        const tx = c.align === "right" ? cx + colW[i] - padX : cx + padX;
-        ctx.fillText(String(c.get(r)), tx, y + rowH / 2);
-        cx += colW[i];
-      });
-      ctx.strokeStyle = "#ddd9cf"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0, y + rowH + 0.5); ctx.lineTo(tableW, y + rowH + 0.5); ctx.stroke();
-    });
-
-    ctx.strokeStyle = "#ddd9cf"; ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, 0.5, tableW - 1, tableH - 1);
-
+    // Distinct claimants and statuses from the exported row set so the
+    // in-file dropdowns only offer what's actually present.
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort();
+    const claimants = uniq(rows.map((r) => r.claimant));
+    const statuses = uniq(rows.map((r) => r.status));
     const today = new Date().toISOString().slice(0, 10);
-    cvs.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `mediclaim-awaiting-${today}.png`;
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
+    const generatedAt = new Date().toLocaleString();
+
+    // Payload embedded in the exported file. Escape </ and & to prevent any
+    // stray description or notes text from breaking out of the <script> tag.
+    const payload = {
+      rows: rows.map((r) => ({
+        id: r.id,
+        date_incurred: r.date_incurred,
+        claimant: r.claimant || "",
+        institution: r.institution || "",
+        amount: Number(r.amount || 0),
+        currency: r.currency || "",
+        amount_rebated: Number(r.amount_rebated || 0),
+        shortfall: Number(r.shortfall || 0),
+        status: r.status || "",
+        invoice_received: !!r.invoice_received,
+        claimed: !!r.claimed,
+        rebated: !!r.rebated,
+        excluded: !!r.excluded,
+      })),
+      claimants,
+      statuses,
+      initial: {
+        q: initFilters.q,
+        fcl: initFilters.fcl,
+        fst: initFilters.fst,
+        dFrom: initFilters.dFrom,
+        dTo: initFilters.dTo,
+      },
+      generatedAt,
+    };
+    const dataJson = JSON.stringify(payload)
+      .replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
+
+    const html = buildClaimsSnapshotHtml(dataJson, generatedAt);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `mediclaim-${today}.html`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Self-contained snapshot HTML. Keeps to inline CSS + a small script so it
+  // works offline. Runtime uses vanilla JS — no external libs.
+  function buildClaimsSnapshotHtml(dataJson, generatedAt) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Claims Snapshot — ${generatedAt}</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Source+Sans+Pro:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Source Sans Pro', sans-serif; color: #3D3229; background: #FAF7F2;
+         margin: 0; padding: 2rem; max-width: 1200px; margin-left: auto; margin-right: auto; }
+  h1 { font-family: 'Playfair Display', serif; color: #556B2F; font-weight: 600; font-size: 2rem;
+       margin: 0 0 0.25rem 0; letter-spacing: -0.5px; }
+  .subtitle { color: #6B5D4F; margin-bottom: 1.5rem; }
+  .summary { display: flex; gap: 2rem; flex-wrap: wrap; margin: 1rem 0 1.5rem 0;
+             padding: 1rem 1.2rem; background: white; border: 1px solid #DED6C4; border-radius: 6px; }
+  .stat .n { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 1.6rem; color: #3D3229; }
+  .stat .l { color: #6B5D4F; font-size: 0.9rem; }
+  .privacy { background: #FFF4E0; border-left: 3px solid #C77B4F; padding: 0.6rem 0.9rem;
+             margin: 1rem 0; font-size: 0.9rem; color: #6B5D4F; }
+  .filters { display: flex; gap: 0.8rem; flex-wrap: wrap; align-items: center; margin: 1rem 0; }
+  .filters label { font-size: 0.85rem; color: #6B5D4F; margin-right: 0.3rem; }
+  .filters input[type="date"], .filters input[type="search"], .filters select {
+    font-family: 'Source Sans Pro', sans-serif; font-size: 0.9rem;
+    padding: 0.35rem 0.55rem; border: 1px solid #C4B8A8; border-radius: 4px; background: white; color: #3D3229;
+  }
+  .filters input[type="search"] { min-width: 180px; }
+  .row-count { margin-left: auto; color: #6B5D4F; font-size: 0.9rem; }
+  table { width: 100%; border-collapse: collapse; background: white; font-size: 0.9rem;
+          border: 1px solid #DED6C4; border-radius: 6px; overflow: hidden; }
+  thead th { background: #EDE7DF; color: #3D3229; text-align: left; padding: 0.5rem 0.6rem;
+             font-weight: 600; border-bottom: 1px solid #C4B8A8; white-space: nowrap; }
+  thead th.center { text-align: center; }
+  thead th.num { text-align: right; }
+  tbody td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #EDE7DF; }
+  tbody td.center { text-align: center; }
+  tbody td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  /* Row-status backgrounds — same as the live dashboard. */
+  tbody tr.row-await    { background: #E8A8A8; }
+  tbody tr.row-ready    { background: #FBF1CF; }
+  tbody tr.row-claim    { background: #DFEEDE; }
+  tbody tr.row-done     { background: #B8D9BF; }
+  tbody tr.row-warn     { background: #C25B54; color: #fff; box-shadow: inset 3px 0 0 #743732; }
+  tbody tr.row-excluded { background: #E2E0D9; color: #666; }
+  tbody tr:hover { box-shadow: inset 0 0 0 9999px rgba(31,42,36,.04); }
+  tbody tr.row-warn:hover { box-shadow: inset 3px 0 0 #743732, inset 0 0 0 9999px rgba(0,0,0,.05); }
+  .flag { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #6B8E23; }
+  .flag.off { background: transparent; border: 1px solid #C4B8A8; }
+  .pill { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.8rem;
+          background: #EDE7DF; color: #3D3229; white-space: nowrap; }
+  .pill.status-Awaiting.invoice, .pill.awaiting { background: #F5E6C7; color: #6B5D4F; }
+  .pill.ready { background: #E6EAD8; color: #556B2F; }
+  .pill.submitted { background: #E4E9EE; color: #3E4B57; }
+  .pill.complete { background: #DDE7DD; color: #556B2F; }
+  .pill.excluded { background: #E8DED4; color: #6B5D4F; }
+  .pill.anomaly { background: #F5D9CE; color: #A0522D; }
+  footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #E0D5C4;
+           color: #8B7355; font-size: 0.85rem; }
+  .empty { padding: 1rem; text-align: center; color: #6B5D4F; background: white;
+           border: 1px solid #DED6C4; border-radius: 6px; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+  <h1>Claims Snapshot</h1>
+  <div class="subtitle">Family medical invoices &amp; rebate tracking · Generated ${generatedAt}</div>
+
+  <div class="privacy">Contains real personal data — review before sharing.</div>
+
+  <div class="summary" id="summary"></div>
+
+  <div class="filters">
+    <label>From <input type="date" id="fx-from"></label>
+    <label>To <input type="date" id="fx-to"></label>
+    <input type="search" id="fx-q" placeholder="Search institution, notes…">
+    <select id="fx-cl"><option value="">All claimants</option></select>
+    <select id="fx-st"><option value="">All statuses</option></select>
+    <span class="row-count" id="fx-count"></span>
+  </div>
+
+  <table id="fx-table">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th class="center" title="Days since incurred (open entries only)">Aged</th>
+        <th>Claimant</th>
+        <th>Institution</th>
+        <th class="num">Amount</th>
+        <th class="center" title="Invoice received">Inv</th>
+        <th class="center" title="Claim submitted">Clm</th>
+        <th class="center" title="Rebate received">Reb</th>
+        <th class="center" title="Excluded">Exc</th>
+        <th class="num">Rebated</th>
+        <th class="num">Shortfall</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <div class="empty" id="fx-empty" style="display:none;">No matching entries.</div>
+
+  <footer>Snapshot generated by Claims on ${generatedAt}.</footer>
+
+<script>
+  const DATA = ${dataJson};
+
+  const fmtDate = (iso) => {
+    if (!iso) return "";
+    const [y, m, d] = iso.split("-");
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return \`\${d}-\${months[parseInt(m,10)-1]}-\${y.slice(2)}\`;
+  };
+  const money = (v) => (v == null || isNaN(v)) ? "" :
+    Number(v).toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sgd = (v) => "$" + money(v);
+  const esc = (s) => {
+    const d = document.createElement("div"); d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  };
+  const daysAged = (r) => {
+    if (r.status === "Complete" || r.status === "Excluded") return null;
+    if (!r.date_incurred) return null;
+    const diff = Date.now() - new Date(r.date_incurred + "T00:00:00").getTime();
+    return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+  };
+  const statusPillClass = (s) => {
+    if (s === "Awaiting invoice") return "awaiting";
+    if (s === "Ready to claim") return "ready";
+    if (s === "Claim submitted") return "submitted";
+    if (s === "Complete") return "complete";
+    if (s === "Excluded") return "excluded";
+    if (s && s.startsWith("Check:")) return "anomaly";
+    return "";
+  };
+  // Mirrors rowClass() in claims.js so exported rows shade the same way as
+  // they do in the live dashboard.
+  const rowClass = (s) => {
+    if (s === "Excluded") return "row-excluded";
+    if (s && s.startsWith("Check")) return "row-warn";
+    if (s === "Complete") return "row-done";
+    if (s === "Claim submitted") return "row-claim";
+    if (s === "Ready to claim") return "row-ready";
+    return "row-await";
+  };
+
+  function fill(id, values, initial) {
+    const sel = document.getElementById(id);
+    for (const v of values) {
+      const o = document.createElement("option");
+      o.value = v; o.textContent = v;
+      if (v === initial) o.selected = true;
+      sel.appendChild(o);
+    }
+  }
+  fill("fx-cl", DATA.claimants, DATA.initial.fcl);
+  fill("fx-st", DATA.statuses, DATA.initial.fst);
+  document.getElementById("fx-from").value = DATA.initial.dFrom || "";
+  document.getElementById("fx-to").value = DATA.initial.dTo || "";
+  document.getElementById("fx-q").value = DATA.initial.q || "";
+
+  function currentFilter() {
+    return {
+      q: document.getElementById("fx-q").value.toLowerCase().trim(),
+      fcl: document.getElementById("fx-cl").value,
+      fst: document.getElementById("fx-st").value,
+      dFrom: document.getElementById("fx-from").value,
+      dTo: document.getElementById("fx-to").value,
+    };
+  }
+
+  function applyFilter(rows, f) {
+    return rows.filter((r) => {
+      if (f.dFrom && r.date_incurred < f.dFrom) return false;
+      if (f.dTo && r.date_incurred > f.dTo) return false;
+      if (f.fcl && r.claimant !== f.fcl) return false;
+      if (f.fst && r.status !== f.fst) return false;
+      if (f.q && !(r.institution.toLowerCase().includes(f.q))) return false;
+      return true;
     });
+  }
+
+  function render() {
+    const filtered = applyFilter(DATA.rows, currentFilter());
+
+    // Summary (three stats, matches on-screen)
+    const incurred = filtered.reduce((s, r) => s + (r.amount || 0), 0);
+    const rebate = filtered.reduce((s, r) => s + (r.amount_rebated || 0), 0);
+    const shortfall = incurred - rebate;
+    document.getElementById("summary").innerHTML =
+      \`<div class="stat"><div class="n">\${sgd(incurred)}</div><div class="l">Total amount incurred</div></div>
+       <div class="stat"><div class="n">\${sgd(rebate)}</div><div class="l">Total rebate</div></div>
+       <div class="stat"><div class="n">\${sgd(shortfall)}</div><div class="l">Shortfall</div></div>\`;
+
+    // Table
+    const tbody = document.querySelector("#fx-table tbody");
+    tbody.innerHTML = filtered.map((r) => {
+      const aged = daysAged(r);
+      return \`<tr class="\${rowClass(r.status)}">
+        <td style="white-space:nowrap">\${esc(fmtDate(r.date_incurred))}</td>
+        <td class="center">\${aged ?? ""}</td>
+        <td>\${esc(r.claimant)}</td>
+        <td>\${esc(r.institution)}</td>
+        <td class="num">\${esc(money(r.amount))}</td>
+        <td class="center"><span class="flag \${r.invoice_received ? "" : "off"}"></span></td>
+        <td class="center"><span class="flag \${r.claimed ? "" : "off"}"></span></td>
+        <td class="center"><span class="flag \${r.rebated ? "" : "off"}"></span></td>
+        <td class="center"><span class="flag \${r.excluded ? "" : "off"}"></span></td>
+        <td class="num">\${r.rebated ? esc(money(r.amount_rebated)) : "—"}</td>
+        <td class="num">\${esc(money(r.shortfall))}</td>
+        <td><span class="pill \${statusPillClass(r.status)}">\${esc(r.status)}</span></td>
+      </tr>\`;
+    }).join("");
+
+    document.getElementById("fx-empty").style.display = filtered.length ? "none" : "";
+    document.getElementById("fx-count").textContent =
+      \`\${filtered.length} of \${DATA.rows.length} rows · \${sgd(incurred)} incurred\`;
+  }
+
+  ["fx-from","fx-to","fx-q","fx-cl","fx-st"].forEach((id) => {
+    const el = document.getElementById(id);
+    el.addEventListener(id === "fx-q" ? "input" : "change", render);
+  });
+  render();
+</script>
+</body>
+</html>`;
   }
 
   boot().catch((err) => console.error("Claims boot failed:", err));
