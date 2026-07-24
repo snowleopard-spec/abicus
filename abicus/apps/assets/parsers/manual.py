@@ -1,19 +1,12 @@
 """
 Parser for the Manual export file.
 Reads the file as-is — all attributes are pre-populated in the spreadsheet.
-For rows with Auto Calc Flag = TRUE, fetches stock prices via yfinance
-and calculates Balance (Local) from Units × Price.
+For rows with Auto Calc Flag = TRUE, resolves prices via the caller-supplied
+`resolve_prices` callback and calculates Balance (Local) from Units × Price.
 Handles both Excel (.xlsx/.xls) and CSV (.csv) files.
 """
 
 import pandas as pd
-
-try:
-    import yfinance as yf
-
-    YFINANCE_AVAILABLE = True
-except ImportError:
-    YFINANCE_AVAILABLE = False
 
 
 # Expected columns in the manual file
@@ -34,38 +27,6 @@ EXPECTED_COLUMNS = [
 ]
 
 
-def fetch_stock_prices(tickers):
-    """
-    Fetch current stock prices for a list of tickers.
-
-    Returns
-    -------
-    tuple of (dict, list) : ({ticker: price}, [failed_tickers])
-    """
-    if not YFINANCE_AVAILABLE:
-        return {t: None for t in tickers}, list(tickers)
-
-    prices = {}
-    failed = []
-
-    for ticker in tickers:
-        try:
-            stock = yf.Ticker(ticker)
-            price = stock.fast_info.get("lastPrice", None)
-            if price is None:
-                hist = stock.history(period="1d")
-                if not hist.empty:
-                    price = hist["Close"].iloc[-1]
-            prices[ticker] = price
-            if price is None:
-                failed.append(ticker)
-        except Exception:
-            prices[ticker] = None
-            failed.append(ticker)
-
-    return prices, failed
-
-
 def read_file(file):
     """Read a file as either Excel or CSV based on filename."""
     name = getattr(file, "name", str(file)).lower()
@@ -75,9 +36,13 @@ def read_file(file):
         return pd.read_excel(file)
 
 
-def parse(file, file_config, mapping_asset_class, mapping_us_situs):
+def parse(file, file_config, mapping_asset_class, mapping_us_situs, *, context=None):
     """
     Parse a Manual export file into the standard portfolio schema.
+
+    `context` may carry a `resolve_prices` callable that maps a list of
+    tickers to `(prices, failed, meta)`. Supplied by the pipeline so this
+    parser stays offline-only and never imports yfinance directly.
     """
 
     # --- 1. Read the file ---
@@ -96,36 +61,37 @@ def parse(file, file_config, mapping_asset_class, mapping_us_situs):
         )
 
     # --- 4. Handle Auto Calc rows ---
-    price_errors = []
+    price_errors: list[str] = []
     yfinance_error = False
-    fetched_prices = {}  # {ticker: price} for display
+    fetched_prices: dict = {}
 
-    # Convert Auto Calc to boolean
     df["Auto Calc"] = df["Auto Calc"].astype(str).str.strip().str.upper()
     auto_calc_mask = df["Auto Calc"] == "TRUE"
     auto_calc_rows = df[auto_calc_mask]
 
     if len(auto_calc_rows) > 0:
-        if not YFINANCE_AVAILABLE:
+        tickers = auto_calc_rows["Ticker"].dropna().unique().tolist()
+        resolve_prices = (context or {}).get("resolve_prices")
+
+        if resolve_prices is None:
             yfinance_error = True
+            prices: dict = {t: None for t in tickers}
+            price_errors = list(tickers)
         else:
-            # Get unique tickers that need pricing
-            tickers = auto_calc_rows["Ticker"].dropna().unique().tolist()
-            prices, failed = fetch_stock_prices(tickers)
-            price_errors = failed
+            prices, price_errors, meta = resolve_prices(tickers)
+            yfinance_error = bool(meta.get("yfinance_error", False))
             fetched_prices = {t: p for t, p in prices.items() if p is not None}
 
-            # Calculate Balance (Local) = Units × Price
-            for idx in auto_calc_rows.index:
-                ticker = df.at[idx, "Ticker"]
-                units = df.at[idx, "Units"]
-                if pd.notna(ticker) and ticker in prices and prices[ticker] is not None:
-                    price = prices[ticker]
-                    # London Stock Exchange prices are in pence — convert to pounds
-                    if str(ticker).upper().endswith(".L"):
-                        price = price / 100
-                        fetched_prices[ticker] = price  # store converted price
-                    df.at[idx, "Balance (Local)"] = units * price
+        for idx in auto_calc_rows.index:
+            ticker = df.at[idx, "Ticker"]
+            units = df.at[idx, "Units"]
+            if pd.notna(ticker) and prices.get(ticker) is not None:
+                price = prices[ticker]
+                # London Stock Exchange prices are in pence — convert to pounds.
+                if str(ticker).upper().endswith(".L"):
+                    price = price / 100
+                    fetched_prices[ticker] = price
+                df.at[idx, "Balance (Local)"] = units * price
 
     # --- 5. Build the standard output ---
     output = pd.DataFrame(
@@ -146,7 +112,6 @@ def parse(file, file_config, mapping_asset_class, mapping_us_situs):
 
     output = output.reset_index(drop=True)
 
-    # Attach metadata
     output.attrs["price_errors"] = price_errors
     output.attrs["yfinance_error"] = yfinance_error
     output.attrs["fetched_prices"] = fetched_prices

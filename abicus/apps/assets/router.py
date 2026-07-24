@@ -66,10 +66,18 @@ def _session_or_404(session_id: str) -> dict:
     return session
 
 
-def _fx_state() -> tuple[dict, bool]:
-    rates = fetch_fx_rates() or {}
-    fx_error = not rates or len(rates) <= 1
-    return rates, fx_error
+def _fx_state() -> tuple[dict, bool, bool]:
+    """Return (rates, fx_error, fx_stale). Defaults to cache/snapshot; a live
+    fetch only happens when ABICUS_LIVE_FX is set (or callers pass live=True)."""
+    rates, meta = fetch_fx_rates()
+    return rates or {}, bool(meta.get("fx_error")), bool(meta.get("fx_stale"))
+
+
+def _cached_stock_prices() -> dict:
+    """Load previously-fetched stock prices from the on-disk meta file so a
+    default compile can price Auto Calc rows without hitting yfinance."""
+    _, _, saved_prices = pipeline.load_compiled()
+    return saved_prices or {}
 
 
 # ---------- endpoints ----------
@@ -77,7 +85,7 @@ def _fx_state() -> tuple[dict, bool]:
 @api_router.get("/config")
 def api_config() -> dict:
     config = pipeline.load_config()
-    rates, fx_error = _fx_state()
+    rates, fx_error, fx_stale = _fx_state()
 
     sources = []
     for name, cfg in config["sources_config"]["sources"].items():
@@ -103,6 +111,7 @@ def api_config() -> dict:
         "fx_rates": rates,
         "fx_display": fx_display,
         "fx_error": fx_error,
+        "fx_stale": fx_stale,
         "asset_class_labels": config["asset_class_labels"]["Label"].tolist(),
         "lookthrough_available": not config["currency_lookthrough"].empty,
         "lookthrough_warnings": lookthrough_warnings,
@@ -122,7 +131,7 @@ async def api_compile(
 
     by_name = {a["filename"]: a["source"] for a in parsed_assignments}
     config = pipeline.load_config()
-    rates, fx_error = _fx_state()
+    rates, fx_error, fx_stale = _fx_state()
 
     file_buffers = []
     for upload in files:
@@ -135,7 +144,13 @@ async def api_compile(
         buf = await pipeline.upload_to_bytesio(upload)
         file_buffers.append((upload.filename, buf, src_name))
 
-    result = pipeline.compile_master(file_buffers, config, rates, fx_error)
+    result = pipeline.compile_master(
+        file_buffers,
+        config,
+        rates,
+        fx_error,
+        cached_prices=_cached_stock_prices(),
+    )
     session_id = uuid.uuid4().hex
     SESSIONS[session_id] = {
         "master": result["master"],
@@ -145,6 +160,7 @@ async def api_compile(
         "yfinance_error": result["yfinance_error"],
         "fetched_prices": result["fetched_prices"],
         "fx_rates": rates,
+        "fx_stale": fx_stale,
     }
     return pipeline.build_session_response(session_id, SESSIONS[session_id], config, fx_error)
 
@@ -155,7 +171,7 @@ def api_load() -> dict:
     if df is None:
         raise HTTPException(status_code=404, detail="No saved compilation found.")
     config = pipeline.load_config()
-    rates, fx_error = _fx_state()
+    rates, fx_error, fx_stale = _fx_state()
     session_id = uuid.uuid4().hex
     meta = pipeline.saved_meta()
     SESSIONS[session_id] = {
@@ -166,6 +182,7 @@ def api_load() -> dict:
         "yfinance_error": False,
         "fetched_prices": saved_prices or {},
         "fx_rates": saved_rates or rates or {},
+        "fx_stale": fx_stale,
     }
     return pipeline.build_session_response(session_id, SESSIONS[session_id], config, fx_error)
 

@@ -1,6 +1,7 @@
 abicus/apps/*/config/*
 abicus/apps/*/data/
 !abicus/apps/*/config/*.example
+!abicus/apps/assets/config/fx_rates_snapshot.json
 __pycache__/
 *.pyc
 .venv/

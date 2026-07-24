@@ -47,10 +47,11 @@ def _check_columns(df: pd.DataFrame) -> None:
         )
 
 
-def parse(file, file_config, mapping_asset_class, mapping_us_situs):
+def parse(file, file_config, mapping_asset_class, mapping_us_situs, *, context=None):
     """
     Parse a Broker A export file into the standard portfolio schema.
     """
+    del context  # unused; kept for uniform parser signature
 
     # --- 1. Read the relevant sheet ---
     df = read_file(file, sheet_name="Aggregated Amounts")

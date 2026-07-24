@@ -1,7 +1,10 @@
 """
-Fetches live FX rates and converts balances to USD.
-Uses the free exchangerate.host API (no key required).
-Falls back to a local flat file if offline.
+FX rates loader.
+
+Cache-first by default: a compile with a warm cache or the bundled snapshot
+makes no outbound HTTP request. Live fetches are opt-in via `live=True` (or
+`ABICUS_LIVE_FX=1`) and validate the response shape before caching so a
+truncated 200 can't poison the cache.
 """
 
 import json
@@ -11,39 +14,83 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-RATES_CACHE_FILE = Path(__file__).parent / "config" / "fx_rates_cache.json"
+CONFIG_DIR = Path(__file__).parent / "config"
+RATES_CACHE_FILE = CONFIG_DIR / "fx_rates_cache.json"
+RATES_SNAPSHOT_FILE = CONFIG_DIR / "fx_rates_snapshot.json"
+
+# Currencies the UI/lookthrough code assumes are present. A 200 response
+# missing any of these is treated as malformed.
+EXPECTED_CURRENCIES = frozenset({"USD", "GBP", "EUR", "SGD", "AUD", "HKD", "JPY"})
 
 
-def fetch_fx_rates(base="USD"):
+def _read_json(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or not data:
+        return None
+    return data
+
+
+def _is_valid_rates(rates: dict) -> bool:
+    if not isinstance(rates, dict) or len(rates) <= 1:
+        return False
+    return EXPECTED_CURRENCIES.issubset(rates.keys())
+
+
+def _live_enabled(explicit: bool) -> bool:
+    if explicit:
+        return True
+    flag = os.environ.get("ABICUS_LIVE_FX", "").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
+
+
+def fetch_fx_rates(live: bool = False, base: str = "USD") -> tuple[dict, dict]:
     """
-    Fetch current FX rates with USD as the base currency.
-    Caches to a local file so the app works offline.
+    Return USD-based FX rates plus a metadata dict.
+
+    Default path is cache-first and offline: cached file → bundled snapshot →
+    empty. When `live=True` (or `ABICUS_LIVE_FX` is set), issue a single HTTP
+    request, validate the response contains the expected currencies, and
+    refresh the cache on success.
 
     Returns
     -------
-    dict : e.g. {"GBP": 0.79, "EUR": 0.92, "SGD": 1.34, "USD": 1.0}
+    (rates, meta) : tuple
+        meta keys: `source` (live|cache|snapshot|empty), `fx_stale` (True when
+        not from a fresh live fetch), `fx_error` (True when no usable rates).
     """
-    try:
-        url = f"https://api.exchangerate-api.com/v4/latest/{base}"
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        rates = data["rates"]
+    if _live_enabled(live):
+        try:
+            url = f"https://api.exchangerate-api.com/v4/latest/{base}"
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            rates = data.get("rates") if isinstance(data, dict) else None
+            if _is_valid_rates(rates):
+                try:
+                    RATES_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+                    with open(RATES_CACHE_FILE, "w") as f:
+                        json.dump(rates, f, indent=2)
+                except OSError:
+                    pass
+                return rates, {"source": "live", "fx_stale": False, "fx_error": False}
+        except Exception:
+            pass
 
-        # Cache for offline use
-        with open(RATES_CACHE_FILE, "w") as f:
-            json.dump(rates, f, indent=2)
+    cached = _read_json(RATES_CACHE_FILE)
+    if _is_valid_rates(cached):
+        return cached, {"source": "cache", "fx_stale": True, "fx_error": False}
 
-        return rates
+    snapshot = _read_json(RATES_SNAPSHOT_FILE)
+    if _is_valid_rates(snapshot):
+        return snapshot, {"source": "snapshot", "fx_stale": True, "fx_error": False}
 
-    except Exception as e:
-        # Fall back to cached rates
-        if os.path.exists(RATES_CACHE_FILE):
-            with open(RATES_CACHE_FILE, "r") as f:
-                return json.load(f)
-        else:
-            # Last resort: return just USD = 1
-            return {"USD": 1.0}
+    return {"USD": 1.0}, {"source": "empty", "fx_stale": True, "fx_error": True}
 
 
 def convert_to_usd(df, rates):

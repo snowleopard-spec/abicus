@@ -35,10 +35,11 @@ def read_file_no_header(file):
         return pd.read_excel(file, header=None)
 
 
-def parse(file, file_config, mapping_asset_class, mapping_us_situs):
+def parse(file, file_config, mapping_asset_class, mapping_us_situs, *, context=None):
     """
     Parse a Broker C export file into the standard portfolio schema.
     """
+    del context  # unused; kept for uniform parser signature
 
     # --- 1. Read without headers (non-standard layout) ---
     df = read_file_no_header(file)

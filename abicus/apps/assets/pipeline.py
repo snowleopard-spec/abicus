@@ -12,7 +12,7 @@ import os
 import traceback
 from datetime import date, datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import pandas as pd
 import yaml
@@ -22,6 +22,14 @@ from abicus.apps.assets.fx_rates import convert_to_usd
 from abicus.apps.assets.parsers.broker_a import parse as parse_broker_a
 from abicus.apps.assets.parsers.broker_c import parse as parse_broker_c
 from abicus.apps.assets.parsers.manual import parse as parse_manual
+
+try:
+    import yfinance as yf
+
+    YFINANCE_AVAILABLE = True
+except ImportError:  # pragma: no cover — yfinance is a hard dep, but be graceful
+    yf = None
+    YFINANCE_AVAILABLE = False
 
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_DIR = BASE_DIR / "config"
@@ -167,11 +175,113 @@ async def upload_to_bytesio(upload: UploadFile) -> io.BytesIO:
     return buf
 
 
+# ----------------------------------------------------------------------
+# Live price fetching (yfinance, batched)
+# ----------------------------------------------------------------------
+def _live_prices_enabled(explicit: bool) -> bool:
+    if explicit:
+        return True
+    flag = os.environ.get("ABICUS_LIVE_PRICES", "").strip().lower()
+    return flag in {"1", "true", "yes", "on"}
+
+
+def _extract_last_close(data, ticker: str, is_single: bool) -> Optional[float]:
+    """Pull the most recent close for `ticker` from a yfinance download frame,
+    tolerating both single-ticker (flat columns) and multi-ticker (MultiIndex)
+    result shapes."""
+    try:
+        if is_single:
+            close = data["Close"]
+        else:
+            # group_by="ticker": columns is a MultiIndex with ticker at level 0.
+            if ticker not in data.columns.get_level_values(0):
+                return None
+            close = data[ticker]["Close"]
+        if close is None or close.empty:
+            return None
+        val = close.dropna()
+        if val.empty:
+            return None
+        return float(val.iloc[-1])
+    except Exception:
+        return None
+
+
+def fetch_stock_prices_batched(tickers: list[str]) -> tuple[dict, list[str]]:
+    """Fetch prices for all tickers in a single `yf.download` call so holdings
+    aren't individually enumerable in request logs."""
+    if not tickers:
+        return {}, []
+    if not YFINANCE_AVAILABLE:
+        return {t: None for t in tickers}, list(tickers)
+
+    try:
+        data = yf.download(
+            tickers=" ".join(tickers),
+            period="1d",
+            progress=False,
+            group_by="ticker",
+            threads=False,
+        )
+    except Exception:
+        return {t: None for t in tickers}, list(tickers)
+
+    prices: dict = {}
+    failed: list[str] = []
+    is_single = len(tickers) == 1
+    for t in tickers:
+        price = _extract_last_close(data, t, is_single)
+        prices[t] = price
+        if price is None:
+            failed.append(t)
+    return prices, failed
+
+
+def make_price_resolver(
+    live: bool = False,
+    cached_prices: Optional[dict] = None,
+) -> Callable[[list[str]], tuple[dict, list[str], dict]]:
+    """Build a resolver that parsers can call with a ticker list. Cache-first:
+    only tickers missing from `cached_prices` trigger a batched live fetch,
+    and only when `live` is True. Otherwise missing tickers stay None and are
+    reported as price errors."""
+    cache = dict(cached_prices or {})
+    live = _live_prices_enabled(live)
+
+    def resolve(tickers: list[str]) -> tuple[dict, list[str], dict]:
+        prices: dict = {}
+        for t in tickers:
+            if t in cache and cache[t] is not None:
+                prices[t] = cache[t]
+
+        missing = [t for t in tickers if t not in prices]
+        failed: list[str] = []
+        yfinance_error = False
+
+        if missing:
+            if live:
+                fetched, failed = fetch_stock_prices_batched(missing)
+                prices.update(fetched)
+                if not YFINANCE_AVAILABLE:
+                    yfinance_error = True
+            else:
+                for t in missing:
+                    prices[t] = None
+                failed = list(missing)
+
+        return prices, failed, {"yfinance_error": yfinance_error}
+
+    return resolve
+
+
 def compile_master(
     file_buffers: list[tuple[str, io.BytesIO, str]],
     config: dict,
     rates: dict,
     fx_error: bool,
+    *,
+    live_prices: bool = False,
+    cached_prices: Optional[dict] = None,
 ) -> dict:
     compile_log: list[str] = []
     compile_errors: list[str] = []
@@ -179,6 +289,10 @@ def compile_master(
     yfinance_error = False
     fetched_prices: dict = {}
     all_data: list[pd.DataFrame] = []
+
+    parser_context = {
+        "resolve_prices": make_price_resolver(live=live_prices, cached_prices=cached_prices),
+    }
 
     for fname, buf, src_name in file_buffers:
         if src_name not in config["sources_config"]["sources"]:
@@ -190,7 +304,13 @@ def compile_master(
             compile_errors.append(f"{fname}: Parser '{parser_name}' not implemented.")
             continue
         try:
-            df = PARSERS[parser_name](buf, src_cfg, config["mapping_asset_class"], config["mapping_us_situs"])
+            df = PARSERS[parser_name](
+                buf,
+                src_cfg,
+                config["mapping_asset_class"],
+                config["mapping_us_situs"],
+                context=parser_context,
+            )
             if df is None or len(df) == 0:
                 compile_errors.append(f"{fname}: No data returned.")
                 continue
@@ -223,6 +343,7 @@ def compile_master(
 
 def build_session_response(session_id: str, session: dict, config: dict, fx_error: bool) -> dict:
     master = session.get("master")
+    fx_stale = bool(session.get("fx_stale", False))
     if master is None or len(master) == 0:
         return {
             "session_id": session_id,
@@ -236,6 +357,7 @@ def build_session_response(session_id: str, session: dict, config: dict, fx_erro
             "fetched_prices": session.get("fetched_prices", {}),
             "fx_rates": session.get("fx_rates", {}),
             "fx_error": fx_error,
+            "fx_stale": fx_stale,
             "unmapped": {"asset_class": [], "us_situs": []},
         }
     display = master.reindex(columns=DISPLAY_COLS)
@@ -256,6 +378,7 @@ def build_session_response(session_id: str, session: dict, config: dict, fx_erro
         "fetched_prices": session.get("fetched_prices", {}),
         "fx_rates": session.get("fx_rates", {}),
         "fx_error": fx_error,
+        "fx_stale": fx_stale,
         "unmapped": unmapped_summary(master),
     }
 
