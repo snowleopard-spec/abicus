@@ -35,6 +35,8 @@ class LoanIn(BaseModel):
     maturity_date: date
     payment_day_of_month: int = Field(..., ge=1, le=28)
     currency: str
+    # Blank string treated as "unset" so the form can clear the field.
+    property_value: str | None = None
 
     @field_validator("origin_principal", "annual_rate", "monthly_payment")
     @classmethod
@@ -44,6 +46,17 @@ class LoanIn(BaseModel):
         except (InvalidOperation, ValueError):
             raise ValueError("must be decimal-parseable")
         return str(v)
+
+    @field_validator("property_value")
+    @classmethod
+    def _property_value_optional_decimal(cls, v: str | None) -> str | None:
+        if v is None or v.strip() == "":
+            return None
+        try:
+            Decimal(v)
+        except (InvalidOperation, ValueError):
+            raise ValueError("must be decimal-parseable")
+        return v
 
     def to_loan(self) -> Loan:
         return Loan(
@@ -55,6 +68,9 @@ class LoanIn(BaseModel):
             maturity_date=self.maturity_date,
             payment_day_of_month=self.payment_day_of_month,
             currency=self.currency,
+            property_value=(
+                Decimal(self.property_value) if self.property_value else None
+            ),
         )
 
 

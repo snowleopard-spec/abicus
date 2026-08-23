@@ -50,6 +50,7 @@
     state.schedule = await api.get("/api/loan/schedule");
     renderTiles();
     renderLast();
+    renderBalanceSheet();
     renderSchedule();
   }
 
@@ -57,6 +58,7 @@
     state.snapshot = await api.get(`/api/loan/state?as_of=${state.asOf}`);
     renderTiles();
     renderLast();
+    renderBalanceSheet();
   }
 
   function wireAsOf() {
@@ -116,6 +118,76 @@
       rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
   }
 
+  function renderBalanceSheet() {
+    const fig = document.getElementById("bs-figure");
+    const warn = document.getElementById("bs-warning");
+    const empty = document.getElementById("bs-empty");
+    const sub = document.getElementById("bs-subtitle");
+    fig.innerHTML = "";
+    warn.classList.add("hidden");
+    empty.classList.add("hidden");
+    sub.textContent = "";
+
+    const pvRaw = state.config?.property_value;
+    // Guard: no property value set → prompt-to-set message, hide the diagram.
+    if (pvRaw == null || pvRaw === "") {
+      empty.classList.remove("hidden");
+      return;
+    }
+    const pv = Number(pvRaw);
+    const debt = Number(state.snapshot.principal || 0);
+    if (!Number.isFinite(pv) || pv <= 0) {
+      empty.classList.remove("hidden");
+      return;
+    }
+    const ccy = state.snapshot.currency;
+    const underwater = debt > pv;
+    // Cap equity at 0 when underwater so the two bars stay the same height
+    // (both represent property value); the shortfall is called out in the banner.
+    const equity = Math.max(0, pv - debt);
+    const cappedDebt = Math.min(debt, pv);
+    const debtPct = pv > 0 ? (cappedDebt / pv) * 100 : 0;
+    const equityPct = 100 - debtPct;
+
+    sub.textContent = `LTV ${(cappedDebt / pv * 100).toFixed(0)}%`;
+
+    fig.innerHTML = `
+      <div class="bs-column">
+        <div class="bs-cap bs-cap--asset" style="flex: 1;">
+          <div class="bs-cap__inner">
+            <div class="bs-cap__label">Property</div>
+            <div class="bs-cap__value">${fmtMoney(pv, ccy)}</div>
+          </div>
+        </div>
+        <div class="bs-caption">Asset</div>
+      </div>
+      <div class="bs-column">
+        <div class="bs-column-stack">
+          <div class="bs-cap bs-cap--debt" style="flex: ${debtPct};">
+            <div class="bs-cap__inner">
+              <div class="bs-cap__label">Debt</div>
+              <div class="bs-cap__value">${fmtMoney(debt, ccy)}</div>
+            </div>
+          </div>
+          <div class="bs-cap bs-cap--equity" style="flex: ${equityPct};">
+            <div class="bs-cap__inner">
+              <div class="bs-cap__label">Equity</div>
+              <div class="bs-cap__value">${fmtMoney(equity, ccy)}</div>
+            </div>
+          </div>
+        </div>
+        <div class="bs-caption">Debt + Equity</div>
+      </div>
+    `;
+
+    if (underwater) {
+      const shortfall = debt - pv;
+      warn.textContent =
+        `Underwater by ${fmtMoney(shortfall, ccy)} — outstanding principal exceeds property value.`;
+      warn.classList.remove("hidden");
+    }
+  }
+
   function renderSchedule() {
     const sch = state.schedule;
     const ccy = sch.currency;
@@ -172,8 +244,10 @@
     form.querySelector('[name="original_tenor_months"]').value = c.original_tenor_months;
     form.querySelector('[name="payment_day_of_month"]').value = c.payment_day_of_month;
     form.querySelector('[name="currency"]').value = c.currency;
+    form.querySelector('[name="property_value"]').value = c.property_value ?? "";
 
     root.querySelector('[data-role="save"]').addEventListener("click", async () => {
+      const pvRaw = form.querySelector('[name="property_value"]').value.trim();
       const body = {
         origin_date: form.querySelector('[name="origin_date"]').value,
         maturity_date: form.querySelector('[name="maturity_date"]').value,
@@ -183,6 +257,8 @@
         original_tenor_months: Number(form.querySelector('[name="original_tenor_months"]').value),
         payment_day_of_month: Number(form.querySelector('[name="payment_day_of_month"]').value),
         currency: form.querySelector('[name="currency"]').value.trim(),
+        // Empty string → null so the server clears the field.
+        property_value: pvRaw === "" ? null : pvRaw,
       };
       try {
         await api.putJson("/api/loan/config", body);

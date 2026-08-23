@@ -46,7 +46,17 @@
     </div>
     <table class="kv-table" id="last-table"></table>
   </div>
-  <div></div>
+  <div class="card">
+    <div class="card__header">
+      <h2 class="card__title">Balance sheet</h2>
+      <span class="card__subtitle" id="bs-subtitle"></span>
+    </div>
+    <div class="bs-figure" id="bs-figure"></div>
+    <div class="bs-warning hidden" id="bs-warning"></div>
+    <div class="bs-empty hidden" id="bs-empty">
+      Set a <strong>Property value</strong> in Edit loan to see the balance-sheet view.
+    </div>
+  </div>
 </section>
 
 <section class="card" style="margin-top: var(--space-4);">
@@ -101,6 +111,10 @@
           <div class="field">
             <label class="field__label">Currency</label>
             <input class="input" name="currency" required>
+          </div>
+          <div class="field">
+            <label class="field__label">Property value <span class="field__hint">(optional)</span></label>
+            <input class="input" type="text" name="property_value" inputmode="decimal" placeholder="e.g. 850000">
           </div>
         </div>
       </form>

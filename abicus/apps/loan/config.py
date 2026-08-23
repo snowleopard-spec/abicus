@@ -11,6 +11,7 @@ LOAN_PATH = CONFIG_DIR / "loan.json"
 
 def load_loan() -> Loan:
     raw = json.loads(LOAN_PATH.read_text())
+    pv_raw = raw.get("property_value")
     return Loan(
         origin_date=date.fromisoformat(raw["origin_date"]),
         origin_principal=Decimal(str(raw["origin_principal"])),
@@ -20,6 +21,7 @@ def load_loan() -> Loan:
         maturity_date=date.fromisoformat(raw["maturity_date"]),
         payment_day_of_month=int(raw["payment_day_of_month"]),
         currency=str(raw["currency"]),
+        property_value=Decimal(str(pv_raw)) if pv_raw not in (None, "") else None,
     )
 
 
@@ -30,7 +32,7 @@ def save_loan(loan: Loan) -> Loan:
 
 
 def loan_to_dict(loan: Loan) -> dict:
-    return {
+    d = {
         "origin_date": loan.origin_date.isoformat(),
         "origin_principal": str(loan.origin_principal),
         "annual_rate": str(loan.annual_rate),
@@ -40,3 +42,6 @@ def loan_to_dict(loan: Loan) -> dict:
         "payment_day_of_month": loan.payment_day_of_month,
         "currency": loan.currency,
     }
+    if loan.property_value is not None:
+        d["property_value"] = str(loan.property_value)
+    return d

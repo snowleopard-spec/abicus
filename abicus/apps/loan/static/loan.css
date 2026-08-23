@@ -53,6 +53,80 @@ body[data-active="loan"] {
 
 #last-table.is-collapsed { display: none; }
 
+/* ---------- Balance sheet panel ---------- */
+.bs-figure {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  height: 240px;
+  padding: 6px 4px 4px;
+}
+.bs-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.bs-column-stack {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.bs-cap {
+  padding: 8px 10px;
+  color: #FDFBF6;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-radius: 3px;
+  min-height: 0;
+}
+.bs-cap + .bs-cap { margin-top: 3px; }
+.bs-cap__inner { line-height: 1.15; max-width: 100%; }
+.bs-cap__label {
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  opacity: 0.9;
+  margin-bottom: 2px;
+}
+.bs-cap__value {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bs-cap--asset  { background: #8B7355; }  /* soft brown — asset */
+.bs-cap--debt   { background: #A85A4E; }  /* muted rust — liability */
+.bs-cap--equity { background: #6B8E4E; }  /* olive — equity */
+.bs-caption {
+  margin-top: 6px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.bs-warning {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-left: 3px solid var(--danger);
+  border-radius: 3px;
+  font-size: 13px;
+}
+.bs-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.hidden { display: none !important; }
+.field__hint { color: var(--text-muted); font-weight: normal; font-size: 12px; }
+
 /* Tabulator harmony */
 .tabulator { border: none !important; font-family: var(--font-sans); font-size: var(--text-sm); }
 .tabulator .tabulator-header {

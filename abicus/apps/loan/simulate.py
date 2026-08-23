@@ -22,6 +22,10 @@ class Loan:
     maturity_date: date
     payment_day_of_month: int
     currency: str
+    # Optional so pre-existing loan.json files without this field still load.
+    # Used by the frontend balance-sheet panel to compute equity =
+    # property_value − outstanding_principal.
+    property_value: Decimal | None = None
 
 
 def q(x: Decimal) -> Decimal:
