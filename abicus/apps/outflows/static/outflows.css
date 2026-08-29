@@ -326,8 +326,19 @@ code {
   letter-spacing: 0.02em;
 }
 
-/* Category dropdown for the +H button. Fixed-position and appended to
-   <body> because .mini-table-wrap clips overflow. */
+/* Highlight-to-map: selecting text in a description cell shows a
+   translucent blue bubble over the still-readable string. */
+.desc-cell {
+  cursor: text;
+}
+.desc-cell::selection,
+.desc-cell *::selection {
+  background: rgba(74, 144, 217, 0.35);
+  color: inherit;
+}
+
+/* Category dropdown for the +H button and highlight-to-map. Fixed-position
+   and appended to <body> because .mini-table-wrap clips overflow. */
 .cat-menu {
   position: fixed;
   z-index: 1000;

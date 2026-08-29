@@ -51,6 +51,7 @@
     wireDateRange();
     wireTableFilters();
     wireDownloads();
+    wireHighlightToMap();
     await tryRestoreSession();
   }
 
@@ -414,8 +415,9 @@
     $("unmapped-summary").textContent = `Unmapped transactions (${unmapped.length})`;
     $("unmapped-intro").textContent = unmapped.length
       ? "These descriptions did not match any pattern in your mapping table. " +
-        "Use the download below to grow mapping.xlsx, or click +H to pick a " +
-        "category and save the row to your transaction history."
+        "Click +H to pick a category and save the row to your transaction " +
+        "history, or highlight part of a description to turn the highlighted " +
+        "text into a new mapping rule."
       : "Every transaction was mapped. Nice.";
 
     const wrap = $("unmapped-rows");
@@ -434,7 +436,7 @@
       const tr = document.createElement("tr");
       tr.innerHTML =
         `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
-        `<td>${escapeHtml(String(r.description ?? ""))}</td>` +
+        `<td class="desc-cell">${escapeHtml(String(r.description ?? ""))}</td>` +
         `<td class="amount">${fmtSGD.format(r.amount)}</td>` +
         `<td>${escapeHtml(String(r.account ?? ""))}</td>`;
       const actionCell = document.createElement("td");
@@ -450,7 +452,10 @@
       btn.textContent = "+H";
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        openCategoryMenu(btn, r._idx);
+        openCategoryMenu(
+          btn.getBoundingClientRect(),
+          (cat) => addToHistory(r._idx, cat),
+        );
       });
       actionCell.appendChild(btn);
       tr.appendChild(actionCell);
@@ -478,7 +483,7 @@
     if (e.key === "Escape") closeCategoryMenu();
   }
 
-  function openCategoryMenu(anchorBtn, rowIdx) {
+  function openCategoryMenu(rect, onPick) {
     closeCategoryMenu();
     const cats = (state.config.categories || []).filter((c) => c !== UNCAT);
     if (!cats.length) {
@@ -498,14 +503,13 @@
       item.addEventListener("click", (e) => {
         e.stopPropagation();
         closeCategoryMenu();
-        addToHistory(rowIdx, cat);
+        onPick(cat);
       });
       menu.appendChild(item);
     }
     menu.addEventListener("click", (e) => e.stopPropagation());
 
     document.body.appendChild(menu);
-    const rect = anchorBtn.getBoundingClientRect();
     const menuRect = menu.getBoundingClientRect();
     let top = rect.bottom + 4;
     if (top + menuRect.height > window.innerHeight - 8) {
@@ -523,6 +527,63 @@
       document.addEventListener("keydown", onMenuKeydown);
       window.addEventListener("scroll", closeCategoryMenu, true);
     }, 0);
+  }
+
+  // ---- Highlight-to-map ----
+  // Selecting text inside a description cell in the Unmapped panel and
+  // releasing the mouse offers the category menu; the picked category plus
+  // the highlighted substring become a new mapping.xlsx/mapping.json rule.
+  function wireHighlightToMap() {
+    $("unmapped-rows").addEventListener("mouseup", () => {
+      // Deferred so the browser has finalised the selection, and so the
+      // menu's own document-click close handler doesn't race this event.
+      setTimeout(() => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+        const cellOf = (node) => {
+          const el = node && (node.nodeType === 1 ? node : node.parentElement);
+          return el ? el.closest(".desc-cell") : null;
+        };
+        const anchorCell = cellOf(sel.anchorNode);
+        if (!anchorCell || anchorCell !== cellOf(sel.focusNode)) return;
+        const text = sel.toString().trim();
+        if (text.length < 2) return;
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        openCategoryMenu(rect, (cat) => addMappingRule(text, cat));
+      }, 0);
+    });
+  }
+
+  async function addMappingRule(substring, category) {
+    let resp;
+    try {
+      resp = await api.postJson(
+        `/api/outflows/mapping/add-rule/${state.session.session_id}`,
+        { substring, category },
+      );
+    } catch {
+      return; // api.js already toasted the error
+    }
+    for (const idx of resp.updated_idx || []) {
+      const r = state.session.rows[idx];
+      if (r) {
+        r.category = resp.category;
+        r.matched_pattern = resp.substring;
+      }
+    }
+    const n = (resp.updated_idx || []).length;
+    const verb =
+      resp.status === "updated" ? "Updated mapping rule"
+      : resp.status === "unchanged" ? "Mapping rule already exists:"
+      : "Added mapping rule";
+    toast(
+      `${verb} "${resp.substring}" → ${resp.category}` +
+      (n ? ` — ${n} row${n !== 1 ? "s" : ""} recategorised.` : "."),
+      "info",
+    );
+    for (const w of resp.warnings || []) toast(w, "info", 6000);
+    saveSession();
+    renderForDateRange();
   }
 
   async function addToHistory(rowIdx, category) {

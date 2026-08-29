@@ -502,6 +502,81 @@ def api_history_append(session_id: str, body: DateRangeBody):
     return {"n_added": n_added, "n_skipped": n_skipped}
 
 
+class MappingAddRuleBody(BaseModel):
+    substring: str
+    category: str
+
+
+@api_router.post("/mapping/add-rule/{session_id}")
+def api_mapping_add_rule(session_id: str, body: MappingAddRuleBody):
+    """Highlight-to-map flow: add (or re-point) a substring rule in the
+    mapping table — written to both mapping.xlsx and mapping.json via
+    save_mapping_table — then recategorise every unmapped session row whose
+    description contains the substring, so the rule takes effect
+    immediately."""
+    state = _get_session(session_id)
+
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"categories.txt: {e}")
+
+    category = body.category.strip()
+    if category not in valid_cats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Category '{category}' is not in categories.txt.",
+        )
+
+    substring = body.substring.strip()
+    sub_lower = substring.lower()
+    if len(sub_lower) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Highlighted string is too short to use as a rule.",
+        )
+
+    rules = load_mapping_table()
+    outcome = "added"
+    for rule in rules:
+        if str(rule["partial_string"]).strip().lower() == sub_lower:
+            if rule["category"].strip() == category:
+                outcome = "unchanged"
+            else:
+                rule["category"] = category
+                outcome = "updated"
+            break
+    else:
+        rules.append({"partial_string": substring, "category": category})
+
+    try:
+        _, warnings = save_mapping_table(rules, valid_cats)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    # save_mapping_table re-reports warnings for the whole table; only the
+    # ones touching the new rule are worth surfacing here.
+    warnings = [w for w in warnings if sub_lower in w.lower()]
+
+    # Immediate effect on the live session, scoped to unmapped rows (rows
+    # already matched by another rule keep their category until the next
+    # Compile applies full longest-match semantics).
+    df: pd.DataFrame = state["df"]
+    mask = (df["category"] == UNCATEGORISED) & (
+        df["description"].astype(str).str.lower().str.contains(sub_lower, regex=False)
+    )
+    df.loc[mask, "category"] = category
+    df.loc[mask, "matched_pattern"] = sub_lower
+    state["payload"]["rows"] = _df_to_records(df)
+
+    return {
+        "status": outcome,
+        "substring": sub_lower,
+        "category": category,
+        "updated_idx": [int(i) for i in df.index[mask]],
+        "warnings": warnings,
+    }
+
+
 class HistoryCategoriseBody(BaseModel):
     row_idx: int
     category: str
