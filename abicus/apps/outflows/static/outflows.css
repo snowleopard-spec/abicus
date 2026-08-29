@@ -326,15 +326,29 @@ code {
   letter-spacing: 0.02em;
 }
 
-/* Highlight-to-map: selecting text in a description cell shows a
-   translucent blue bubble over the still-readable string. */
+/* Highlight-to-map: selecting text in a description cell shows a raised,
+   rounded translucent blue bubble over the still-readable string. The
+   native selection is made invisible here — .sel-bubble overlays (drawn
+   from the selection's client rects) replace it so the highlight can have
+   rounded edges and depth, which ::selection itself cannot. */
 .desc-cell {
   cursor: text;
 }
 .desc-cell::selection,
 .desc-cell *::selection {
-  background: rgba(74, 144, 217, 0.35);
+  background: transparent;
   color: inherit;
+}
+.sel-bubble {
+  position: fixed;
+  z-index: 999; /* under .cat-menu */
+  pointer-events: none;
+  background: rgba(74, 144, 217, 0.26);
+  border: 1px solid rgba(74, 144, 217, 0.55);
+  border-radius: 7px;
+  box-shadow:
+    0 2px 6px rgba(31, 64, 104, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 /* Category dropdown for the +H button and highlight-to-map. Fixed-position

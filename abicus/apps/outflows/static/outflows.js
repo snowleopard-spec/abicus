@@ -533,19 +533,61 @@
   // Selecting text inside a description cell in the Unmapped panel and
   // releasing the mouse offers the category menu; the picked category plus
   // the highlighted substring become a new mapping.xlsx/mapping.json rule.
+  // The highlight itself is custom: native ::selection is transparent in
+  // desc-cells and .sel-bubble overlays are drawn live over the selection's
+  // client rects instead, giving rounded edges and a raised look.
+  let selBubbles = [];
+
+  function clearSelectionBubbles() {
+    for (const b of selBubbles) b.remove();
+    selBubbles = [];
+  }
+
+  function descCellOf(node) {
+    const el = node && (node.nodeType === 1 ? node : node.parentElement);
+    return el ? el.closest(".desc-cell") : null;
+  }
+
+  // Returns the selection iff it lies within a single description cell.
+  function descCellSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+    const anchorCell = descCellOf(sel.anchorNode);
+    if (!anchorCell || anchorCell !== descCellOf(sel.focusNode)) return null;
+    return sel;
+  }
+
+  function renderSelectionBubbles() {
+    clearSelectionBubbles();
+    const sel = descCellSelection();
+    if (!sel) return;
+    // One rect per rendered line fragment (normally just one).
+    for (const r of sel.getRangeAt(0).getClientRects()) {
+      if (r.width < 1) continue;
+      const b = document.createElement("div");
+      b.className = "sel-bubble";
+      b.style.top = `${r.top - 2}px`;
+      b.style.left = `${r.left - 3}px`;
+      b.style.width = `${r.width + 6}px`;
+      b.style.height = `${r.height + 4}px`;
+      document.body.appendChild(b);
+      selBubbles.push(b);
+    }
+  }
+
   function wireHighlightToMap() {
+    // Live bubble while the mouse is held down and the selection grows.
+    document.addEventListener("selectionchange", renderSelectionBubbles);
+    // Fixed-position bubbles go stale on scroll; drop them (the selection
+    // gesture is over by then or restarts on the next selectionchange).
+    window.addEventListener("scroll", clearSelectionBubbles, true);
+
     $("unmapped-rows").addEventListener("mouseup", () => {
       // Deferred so the browser has finalised the selection, and so the
       // menu's own document-click close handler doesn't race this event.
       setTimeout(() => {
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
-        const cellOf = (node) => {
-          const el = node && (node.nodeType === 1 ? node : node.parentElement);
-          return el ? el.closest(".desc-cell") : null;
-        };
-        const anchorCell = cellOf(sel.anchorNode);
-        if (!anchorCell || anchorCell !== cellOf(sel.focusNode)) return;
+        const sel = descCellSelection();
+        if (!sel) return;
         const text = sel.toString().trim();
         if (text.length < 2) return;
         const rect = sel.getRangeAt(0).getBoundingClientRect();
@@ -582,6 +624,8 @@
       "info",
     );
     for (const w of resp.warnings || []) toast(w, "info", 6000);
+    try { window.getSelection().removeAllRanges(); } catch { /* ignore */ }
+    clearSelectionBubbles();
     saveSession();
     renderForDateRange();
   }
