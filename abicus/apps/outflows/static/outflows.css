@@ -228,6 +228,22 @@ code {
   color: var(--text-muted);
   gap: 0.25rem;
 }
+.table-filters .toggle-matched {
+  margin-left: auto;
+  align-self: flex-end;
+  font-family: inherit;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.table-filters .toggle-matched:hover {
+  background: var(--surface-alt);
+  color: var(--text-primary);
+}
 .table-filters select,
 .table-filters input[type="search"] {
   font-family: inherit;

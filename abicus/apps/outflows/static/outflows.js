@@ -5,7 +5,7 @@
     nextFileId: 1,
     session: null,                                 // /api/outflows/compile payload
     dateRange: { from: null, to: null },
-    tableFilter: { category: "All", account: "All", search: "" },
+    tableFilter: { category: "All", account: "All", search: "", matched: false },
     table: null,
     scoped: null,                                  // {rows, dedup, dashboardRows}
     // Per-row overrides toggled from the Duplicate / Excluded panels and the
@@ -928,6 +928,22 @@
       if (state.scoped) renderTable(state.scoped.dashboardRows);
       saveSession();
     });
+    $("toggle-matched").addEventListener("click", () => {
+      state.tableFilter.matched = !state.tableFilter.matched;
+      syncMatchedColumn();
+      saveSession();
+    });
+  }
+
+  // Show/hide the Matched pattern column and keep the toggle's label in sync.
+  function syncMatchedColumn() {
+    const on = !!state.tableFilter.matched;
+    $("toggle-matched").textContent = on
+      ? "Hide matched pattern"
+      : "Show matched pattern";
+    if (!state.table) return;
+    if (on) state.table.showColumn("matched_pattern");
+    else state.table.hideColumn("matched_pattern");
   }
 
   function renderTable(rows) {
@@ -963,7 +979,8 @@
             formatter: (cell) => fmtSGD.format(cell.getValue()) },
           { title: "Category", field: "category", width: 160 },
           { title: "Account", field: "account", width: 160 },
-          { title: "Matched pattern", field: "matched_pattern", minWidth: 140 },
+          { title: "Matched pattern", field: "matched_pattern", minWidth: 140,
+            visible: !!state.tableFilter.matched },
           { title: "", field: "_idx", width: 52, hozAlign: "center",
             headerSort: false,
             formatter: () =>
@@ -977,6 +994,7 @@
     } else {
       state.table.replaceData(view);
     }
+    syncMatchedColumn();
   }
 
   function refreshFilterOptions(selectId, field, rows) {
