@@ -143,9 +143,10 @@ def test_mapping_add_rule(app, tmp_path, monkeypatch):
         outflows.SESSIONS.pop("test-map-rule", None)
 
 
-def test_config_accounts_carry_default_labels(app):
-    """Every account entry exposes a labels list, defaulting to just its
-    own name (legacy behaviour)."""
+def test_config_accounts_carry_labels(app):
+    """Every account entry exposes a non-empty labels list. (Names need
+    not appear in their own labels — an account name may be a grouping
+    like 'UOB' whose labels are the individual cards.)"""
     c = TestClient(app)
     r = c.get("/api/outflows/config")
     assert r.status_code == 200
@@ -153,7 +154,18 @@ def test_config_accounts_carry_default_labels(app):
     assert accounts, "expected at least one account"
     for a in accounts:
         assert a["labels"], a
-        assert a["name"] in a["labels"], a
+
+
+def test_load_accounts_labels_default_to_name(tmp_path):
+    """An entry without a 'labels' key defaults to [name]."""
+    from abicus.apps.outflows.accounts import load_accounts
+
+    p = tmp_path / "accounts.yaml"
+    p.write_text(
+        'accounts:\n  - name: "Solo Card"\n    format: "Format A"\n'
+    )
+    m = load_accounts(p)
+    assert m == {"Solo Card": {"format": "Format A", "labels": ["Solo Card"]}}
 
 
 def test_compile_rejects_label_not_allowed_for_account(app, monkeypatch):
