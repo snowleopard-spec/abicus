@@ -144,61 +144,69 @@
   </details>
 
   <section class="card">
-    <h2>Downloads</h2>
     <div class="downloads">
-      <div class="download-tile">
-        <button id="dl-categorised" type="button" class="btn btn-primary">
-          Download categorised (Excel)
-        </button>
-        <div class="caption">
-          Dashboard view as Excel — transaction exclusions applied.
+      <div class="download-group">
+        <h3>Downloads</h3>
+        <div class="download-tile">
+          <button id="dl-categorised" type="button" class="btn btn-primary">
+            Download categorised (Excel)
+          </button>
+          <div class="caption">
+            Dashboard view as Excel — transaction exclusions applied.
+          </div>
+        </div>
+        <div class="download-tile">
+          <button id="dl-html" type="button" class="btn">
+            Download HTML snapshot
+          </button>
+          <div class="caption">
+            Self-contained file with filter functionality for sharing.
+          </div>
         </div>
       </div>
-      <div class="download-tile">
-        <button id="dl-unmapped" type="button" class="btn">
-          Download unmapped (Excel)
-        </button>
-        <div class="caption">
-          Unmapped transactions only. Standalone snapshot —
-          does not modify <code>transaction_history.xlsx</code>.
+      <div class="download-group">
+        <h3>Database</h3>
+        <div class="download-tile">
+          <button id="db-commit" type="button" class="btn">
+            Commit to database
+          </button>
+          <div class="caption">
+            Upserts all rows in the current Categorised Transactions view into
+            <code>data/transactions.db</code> — the source of truth for the
+            Monthly Breakdown page. Safe to re-commit; matching rows are
+            updated in place.
+          </div>
+        </div>
+        <div class="download-tile">
+          <button id="db-clear" type="button" class="btn">
+            Clear database
+          </button>
+          <div class="caption">
+            Wipes every row from <code>data/transactions.db</code> so you can
+            start over. Destructive — asks for confirmation first.
+          </div>
         </div>
       </div>
-      <div class="download-tile">
-        <button id="dl-html" type="button" class="btn">
-          Download HTML snapshot
-        </button>
-        <div class="caption">
-          Self-contained file with filter functionality for sharing.
+      <div class="download-group">
+        <h3>Unmapped Help</h3>
+        <div class="download-tile">
+          <button id="dl-unmapped" type="button" class="btn">
+            Download unmapped (Excel)
+          </button>
+          <div class="caption">
+            Unmapped transactions only. Standalone snapshot —
+            does not modify <code>transaction_history.xlsx</code>.
+          </div>
         </div>
-      </div>
-      <div class="download-tile">
-        <button id="append-history" type="button" class="btn">
-          Append unmapped to history
-        </button>
-        <div class="caption">
-          Appends new unmapped rows to
-          <code>config/transaction_history.xlsx</code>
-          (deduped on description).
-        </div>
-      </div>
-      <div class="download-tile">
-        <button id="db-commit" type="button" class="btn">
-          Commit to database
-        </button>
-        <div class="caption">
-          Upserts all rows in the current Categorised Transactions view into
-          <code>data/transactions.db</code> — the source of truth for the
-          Monthly Breakdown page. Safe to re-commit; matching rows are updated
-          in place.
-        </div>
-      </div>
-      <div class="download-tile">
-        <button id="db-clear" type="button" class="btn">
-          Clear database
-        </button>
-        <div class="caption">
-          Wipes every row from <code>data/transactions.db</code> so you can
-          start over. Destructive — asks for confirmation first.
+        <div class="download-tile">
+          <button id="append-history" type="button" class="btn">
+            Append unmapped to history
+          </button>
+          <div class="caption">
+            Appends new unmapped rows to
+            <code>config/transaction_history.xlsx</code>
+            (deduped on description).
+          </div>
         </div>
       </div>
     </div>
