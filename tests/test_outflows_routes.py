@@ -143,6 +143,45 @@ def test_mapping_add_rule(app, tmp_path, monkeypatch):
         outflows.SESSIONS.pop("test-map-rule", None)
 
 
+def test_config_exposes_parser_formats(app):
+    c = TestClient(app)
+    r = c.get("/api/outflows/config")
+    assert r.status_code == 200
+    assert r.json()["formats"] == [f"Format {x}" for x in "ABCDEF"]
+
+
+def test_compile_rejects_label_not_allowed_for_parser(app, monkeypatch):
+    """A label may only be used with the parser it is registered under in
+    accounts.yaml."""
+    from abicus.apps.outflows import router as outflows
+
+    monkeypatch.setattr(
+        outflows, "load_accounts",
+        lambda valid_formats=None: {"Amex PPS": "Format A", "UOB One Card": "Format C"},
+    )
+    monkeypatch.setattr(
+        outflows, "build_mapping_if_changed", lambda: (False, 0, [])
+    )
+
+    c = TestClient(app)
+    r = c.post(
+        "/api/outflows/compile",
+        files=[("files", ("stmt.csv", b"dummy", "text/csv"))],
+        data={"parsers": ["Format C"], "labels": ["Amex PPS"]},
+    )
+    assert r.status_code == 400
+    assert "not an allowed label for Format C" in r.json()["detail"]
+    assert "UOB One Card" in r.json()["detail"]
+
+    r = c.post(
+        "/api/outflows/compile",
+        files=[("files", ("stmt.csv", b"dummy", "text/csv"))],
+        data={"parsers": ["Format Z"], "labels": ["Amex PPS"]},
+    )
+    assert r.status_code == 400
+    assert "Unknown parser" in r.json()["detail"]
+
+
 def test_db_commit_honours_manual_exclusions(app, monkeypatch):
     """Rows excluded by hand via the × button (excluded_row_idx) are
     dropped from the committed view."""

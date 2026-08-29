@@ -96,7 +96,8 @@ code {
 .file-list h3 { margin: 0 0 0.6rem; }
 .file-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  /* filename · parser select · label select · remove */
+  grid-template-columns: 1fr auto auto auto;
   gap: 1rem;
   align-items: center;
   padding: 0.5rem 0.25rem;
@@ -117,7 +118,7 @@ code {
   border-radius: 4px;
   background: var(--bg-card);
   color: var(--text-primary);
-  min-width: 12rem;
+  min-width: 9rem;
 }
 .file-row .remove-btn {
   background: transparent;

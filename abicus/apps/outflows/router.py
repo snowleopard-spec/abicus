@@ -179,6 +179,7 @@ def api_config():
 
     return {
         "accounts": [{"name": name, "format": fmt} for name, fmt in accounts.items()],
+        "formats": list(PARSERS.keys()),
         "categories": sorted(all_cats),
         "excluded": sorted(excluded),
     }
@@ -187,12 +188,16 @@ def api_config():
 @api_router.post("/compile")
 async def api_compile(
     files: list[UploadFile] = File(...),
-    accounts: list[str] = Form(...),
+    parsers: list[str] = Form(...),
+    labels: list[str] = Form(...),
 ):
-    if len(files) != len(accounts):
+    if len(files) != len(parsers) or len(files) != len(labels):
         raise HTTPException(
             status_code=400,
-            detail=f"Expected {len(files)} account selections, got {len(accounts)}.",
+            detail=(
+                f"Expected {len(files)} parser and label selections, "
+                f"got {len(parsers)} parsers / {len(labels)} labels."
+            ),
         )
 
     try:
@@ -207,13 +212,23 @@ async def api_compile(
 
     frames = []
     unfamiliar_accounts: set[str] = set()
-    for upload, chosen_account in zip(files, accounts):
-        if chosen_account not in account_map:
+    for upload, format_name, label in zip(files, parsers, labels):
+        if format_name not in PARSERS:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unknown account '{chosen_account}' for file '{upload.filename}'.",
+                detail=f"Unknown parser '{format_name}' for file '{upload.filename}'.",
             )
-        format_name = account_map[chosen_account]
+        # The label must be one of the accounts registered for this parser in
+        # accounts.yaml — the allowed-labels subset per parser.
+        if account_map.get(label) != format_name:
+            allowed = sorted(n for n, f in account_map.items() if f == format_name)
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Label '{label}' is not an allowed label for {format_name} "
+                    f"(file '{upload.filename}'). Allowed: {allowed or 'none — add one to accounts.yaml'}."
+                ),
+            )
         parser = PARSERS[format_name]
         try:
             file_bytes = await upload.read()
@@ -223,17 +238,17 @@ async def api_compile(
                 status_code=400,
                 detail=(
                     f"Failed to parse '{upload.filename}' as "
-                    f"{chosen_account} ({format_name}): {e}"
+                    f"{label} ({format_name}): {e}"
                 ),
             )
 
         if "account" in parsed.columns:
-            parsed["account"] = parsed["account"].fillna(chosen_account)
+            parsed["account"] = parsed["account"].fillna(label)
             unfamiliar_accounts |= (
                 set(parsed["account"].unique()) - set(account_map.keys())
             )
         else:
-            parsed["account"] = chosen_account
+            parsed["account"] = label
         frames.append(parsed)
 
     df = pd.concat(frames, ignore_index=True)

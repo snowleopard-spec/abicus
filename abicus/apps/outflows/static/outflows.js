@@ -143,14 +143,21 @@
     dz.addEventListener("drop", (e) => addFiles(Array.from(e.dataTransfer.files)));
   }
 
+  // Allowed labels per parser: the accounts.yaml entries whose format
+  // matches. This is the subset the label dropdown offers for each parser.
+  function labelsForParser(parser) {
+    return state.config.accounts
+      .filter((a) => a.format === parser)
+      .map((a) => a.name);
+  }
+
   function addFiles(fileList) {
     if (!fileList.length) return;
-    const accountNames = state.config.accounts.map((a) => a.name);
-    const lastAccount = state.files.length
-      ? state.files[state.files.length - 1].account
-      : accountNames[0];
+    const last = state.files[state.files.length - 1];
+    const parser = last ? last.parser : state.config.accounts[0].format;
+    const label = last ? last.label : state.config.accounts[0].name;
     for (const file of fileList) {
-      state.files.push({ file, id: `f${state.nextFileId++}`, account: lastAccount });
+      state.files.push({ file, id: `f${state.nextFileId++}`, parser, label });
     }
     renderFileList();
   }
@@ -172,7 +179,6 @@
     show(wrap);
     $("compile-btn").disabled = false;
 
-    const accountNames = state.config.accounts.map((a) => a.name);
     for (const f of state.files) {
       const row = document.createElement("div");
       row.className = "file-row";
@@ -182,15 +188,44 @@
       name.textContent = `📄 ${f.file.name}`;
       row.appendChild(name);
 
-      const select = document.createElement("select");
-      for (const acct of accountNames) {
+      const parserSelect = document.createElement("select");
+      parserSelect.title = "Parser format for this file";
+      for (const fmt of state.config.formats || []) {
         const opt = document.createElement("option");
-        opt.value = acct; opt.textContent = acct;
-        if (acct === f.account) opt.selected = true;
-        select.appendChild(opt);
+        opt.value = fmt; opt.textContent = fmt;
+        if (fmt === f.parser) opt.selected = true;
+        parserSelect.appendChild(opt);
       }
-      select.addEventListener("change", () => { f.account = select.value; });
-      row.appendChild(select);
+
+      const labelSelect = document.createElement("select");
+      labelSelect.title = "Label shown in the Account column";
+      const fillLabels = () => {
+        labelSelect.innerHTML = "";
+        const allowed = labelsForParser(f.parser);
+        if (!allowed.length) {
+          const opt = document.createElement("option");
+          opt.value = ""; opt.textContent = "(no labels in accounts.yaml)";
+          labelSelect.appendChild(opt);
+          f.label = "";
+          return;
+        }
+        if (!allowed.includes(f.label)) f.label = allowed[0];
+        for (const lbl of allowed) {
+          const opt = document.createElement("option");
+          opt.value = lbl; opt.textContent = lbl;
+          if (lbl === f.label) opt.selected = true;
+          labelSelect.appendChild(opt);
+        }
+      };
+      fillLabels();
+
+      parserSelect.addEventListener("change", () => {
+        f.parser = parserSelect.value;
+        fillLabels();
+      });
+      labelSelect.addEventListener("change", () => { f.label = labelSelect.value; });
+      row.appendChild(parserSelect);
+      row.appendChild(labelSelect);
 
       const rm = document.createElement("button");
       rm.className = "remove-btn"; rm.type = "button"; rm.textContent = "×"; rm.title = "Remove file";
@@ -216,7 +251,8 @@
     const form = new FormData();
     for (const f of state.files) {
       form.append("files", f.file, f.file.name);
-      form.append("accounts", f.account);
+      form.append("parsers", f.parser);
+      form.append("labels", f.label);
     }
     try {
       state.session = await api.postForm("/api/outflows/compile", form);
