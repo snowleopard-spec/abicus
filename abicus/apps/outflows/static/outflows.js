@@ -711,11 +711,18 @@
     openMenu = null;
     document.removeEventListener("click", closeCategoryMenu);
     document.removeEventListener("keydown", onMenuKeydown);
-    window.removeEventListener("scroll", closeCategoryMenu, true);
+    window.removeEventListener("scroll", onMenuScroll, true);
   }
 
   function onMenuKeydown(e) {
     if (e.key === "Escape") closeCategoryMenu();
+  }
+
+  // Close when the page scrolls — but NOT when the scroll happens inside
+  // the menu itself (scrolling the category list must keep it open).
+  function onMenuScroll(e) {
+    if (openMenu && openMenu.contains(e.target)) return;
+    closeCategoryMenu();
   }
 
   function openCategoryMenu(rect, onPick) {
@@ -745,11 +752,16 @@
     menu.addEventListener("click", (e) => e.stopPropagation());
 
     document.body.appendChild(menu);
+    // Open on whichever side of the anchor has more room, and clamp the
+    // menu's height to that room so the full list is reachable by scroll.
+    const spaceBelow = window.innerHeight - rect.bottom - 12;
+    const spaceAbove = rect.top - 12;
+    const openBelow = spaceBelow >= Math.min(240, spaceAbove) || spaceBelow >= spaceAbove;
+    menu.style.maxHeight = `${Math.max(120, openBelow ? spaceBelow : spaceAbove)}px`;
     const menuRect = menu.getBoundingClientRect();
-    let top = rect.bottom + 4;
-    if (top + menuRect.height > window.innerHeight - 8) {
-      top = Math.max(8, rect.top - menuRect.height - 4);
-    }
+    const top = openBelow
+      ? rect.bottom + 4
+      : Math.max(8, rect.top - menuRect.height - 4);
     let left = rect.right - menuRect.width;
     if (left < 8) left = 8;
     menu.style.top = `${top}px`;
@@ -760,7 +772,7 @@
     setTimeout(() => {
       document.addEventListener("click", closeCategoryMenu);
       document.addEventListener("keydown", onMenuKeydown);
-      window.addEventListener("scroll", closeCategoryMenu, true);
+      window.addEventListener("scroll", onMenuScroll, true);
     }, 0);
   }
 
