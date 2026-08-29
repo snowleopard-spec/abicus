@@ -335,29 +335,30 @@ code {
 }
 
 /* +H (add to transaction history) — same circle, two-character label,
-   light orange (tints of --rust) */
+   soft blue */
 .addhist-btn {
   font-size: 0.62rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: #FAE8D9;
-  border-color: #DCA980;
-  color: #B4642E;
+  background: #E3EBF5;
+  border-color: #9FB4D0;
+  color: #3D6491;
 }
 .addhist-btn:hover {
-  background: #F5DCC5;
-  border-color: var(--rust);
-  color: #9A5527;
+  background: #D4E0F0;
+  border-color: #6E8CB4;
+  color: #2C4F7A;
 }
 
-/* × (exclude a categorised row) — slightly darker brown than the default */
+/* × (exclude a categorised row) — clearly darker brown than the default */
 .row-excl-btn {
-  color: var(--accent-hover);
-  border-color: var(--border-strong);
+  color: #4A3826;
+  border-color: #74604A;
+  font-weight: 600;
 }
 .row-excl-btn:hover {
-  color: #5C4B39;
-  border-color: var(--accent-hover);
+  color: #332617;
+  border-color: #4A3826;
   background: var(--bg-hover);
 }
 
