@@ -214,6 +214,11 @@ async def api_compile(
 
     frames = []
     unfamiliar_accounts: set[str] = set()
+    # Account-column values a file may legitimately carry: any label of any
+    # account (account names themselves are dropdown groupings, not labels).
+    known_labels = {
+        lbl for info in account_map.values() for lbl in info["labels"]
+    }
     for upload, chosen_account, label in zip(files, accounts, labels):
         entry = account_map.get(chosen_account)
         if entry is None:
@@ -250,7 +255,7 @@ async def api_compile(
         if "account" in parsed.columns:
             parsed["account"] = parsed["account"].fillna(label)
             unfamiliar_accounts |= (
-                set(parsed["account"].unique()) - set(account_map.keys())
+                set(parsed["account"].unique()) - known_labels
             )
         else:
             parsed["account"] = label
