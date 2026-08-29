@@ -804,6 +804,26 @@
     return sel;
   }
 
+  // Browsers snap drag-selections to word boundaries including the trailing
+  // space; shrink the selection to its trimmed extent so the bubble shows
+  // exactly the substring that would be stored as a rule.
+  function trimSelectionEdges(sel) {
+    const range = sel.getRangeAt(0);
+    const sc = range.startContainer, ec = range.endContainer;
+    if (sc.nodeType !== Node.TEXT_NODE || ec.nodeType !== Node.TEXT_NODE) return;
+    let s = range.startOffset, e = range.endOffset;
+    const sText = sc.textContent, eText = ec.textContent;
+    while (e > 0 && /\s/.test(eText[e - 1]) && !(sc === ec && e <= s)) e--;
+    while (s < sText.length && /\s/.test(sText[s]) && !(sc === ec && s >= e)) s++;
+    if (s === range.startOffset && e === range.endOffset) return;
+    try {
+      range.setStart(sc, s);
+      range.setEnd(ec, e);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch { /* leave the selection as-is */ }
+  }
+
   function renderSelectionBubbles() {
     clearSelectionBubbles();
     const sel = descCellSelection();
@@ -835,6 +855,8 @@
       setTimeout(() => {
         const sel = descCellSelection();
         if (!sel) return;
+        trimSelectionEdges(sel);
+        renderSelectionBubbles();
         const text = sel.toString().trim();
         if (text.length < 2) return;
         const rect = sel.getRangeAt(0).getBoundingClientRect();
