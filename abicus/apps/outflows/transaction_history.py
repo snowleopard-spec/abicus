@@ -19,6 +19,8 @@ already present (deduped on description, case-insensitive) are skipped.
 from pathlib import Path
 import pandas as pd
 
+from abicus.apps.outflows.categorise import normalise_text
+
 DEFAULT_PATH = Path(__file__).parent / "config" / "transaction_history.xlsx"
 
 REQUIRED_COLUMNS = ["date", "description", "amount", "category"]
@@ -108,7 +110,7 @@ def load_history_mapping(
                 )
                 continue
 
-        key = desc_clean.lower()
+        key = normalise_text(desc_clean)
         if key not in out:
             out[key] = cat_clean
 
@@ -226,7 +228,7 @@ def save_history_table(
     deduped: list[dict] = []
     n_dupe = 0
     for r in clean:
-        key = r["description"].lower()
+        key = normalise_text(r["description"])
         if key in seen:
             n_dupe += 1
             continue
@@ -263,13 +265,12 @@ def upsert_history_category(
         raise ValueError("Description is empty.")
 
     existing = load_history_dataframe(path)
-    key = desc_clean.lower()
+    key = normalise_text(desc_clean)
 
     mask = (
         existing["description"]
         .astype(str)
-        .str.strip()
-        .str.lower()
+        .map(normalise_text)
         == key
     )
     if mask.any():
@@ -320,7 +321,7 @@ def append_to_history(
     # Load existing
     existing = load_history_dataframe(path)
     existing_keys = {
-        str(d).strip().lower()
+        normalise_text(d)
         for d in existing["description"]
         if pd.notna(d) and str(d).strip()
     }
@@ -335,7 +336,7 @@ def append_to_history(
 
     # Dedupe within the new batch itself (case-insensitive on description),
     # keeping the first occurrence
-    candidates["_key"] = candidates["description"].str.lower()
+    candidates["_key"] = candidates["description"].map(normalise_text)
     candidates = candidates.drop_duplicates(subset="_key", keep="first")
 
     # Filter out anything already in history

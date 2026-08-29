@@ -32,6 +32,13 @@ UNCATEGORISED = "Uncategorised"
 MANUAL_PATTERN = "manual"
 
 
+def normalise_text(s: str) -> str:
+    """Lowercase and collapse whitespace runs (spaces, newlines) to single
+    spaces. Statement exports pad fields with arbitrary space runs that are
+    invisible when rendered — matching must not depend on them."""
+    return " ".join(str(s).lower().split())
+
+
 def categorise(
     description: str,
     mapping: dict[str, str],
@@ -59,7 +66,7 @@ def categorise(
     if not description:
         return UNCATEGORISED, ""
 
-    desc_lower = description.lower()
+    desc_lower = normalise_text(description)
 
     # 1. Exact match against transaction history wins
     if history and desc_lower in history:
@@ -135,11 +142,15 @@ def categorise_dataframe(
 
 
 def load_mapping(path: str | Path) -> dict[str, str]:
-    """Load mapping.json. Raises FileNotFoundError if missing."""
+    """Load mapping.json. Raises FileNotFoundError if missing.
+
+    Keys are whitespace-normalised on load so matching stays consistent
+    even if the file predates whitespace-insensitive matching."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(
             f"Missing {path}. Run build_mapping.py to generate it from mapping.xlsx."
         )
     with path.open() as f:
-        return json.load(f)
+        raw = json.load(f)
+    return {normalise_text(k): v for k, v in raw.items()}

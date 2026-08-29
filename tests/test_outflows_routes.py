@@ -143,6 +143,23 @@ def test_mapping_add_rule(app, tmp_path, monkeypatch):
         outflows.SESSIONS.pop("test-map-rule", None)
 
 
+def test_categorise_is_whitespace_insensitive():
+    """Statement exports pad fields with space runs and newlines that
+    collapse when rendered; a rule highlighted from the rendered text
+    (single spaces) must still match the raw description."""
+    from abicus.apps.outflows.categorise import categorise
+
+    raw = "EVERYDAY APP             SINGAPORE    SG\nRef No: 74143256232100043940260"
+    cat, pattern = categorise(raw, {"everyday app singapore": "School Fees"})
+    assert cat == "School Fees"
+    assert pattern == "everyday app singapore"
+    # History exact-match layer normalises the same way.
+    cat, _ = categorise(
+        "EVERYDAY  APP  SINGAPORE  SG", {}, {"everyday app singapore sg": "Misc"}
+    )
+    assert cat == "Misc"
+
+
 def test_config_accounts_carry_labels(app):
     """Every account entry exposes a non-empty labels list. (Names need
     not appear in their own labels — an account name may be a grouping

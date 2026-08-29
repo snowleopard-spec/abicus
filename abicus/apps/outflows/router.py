@@ -22,7 +22,12 @@ from abicus.apps.outflows.build_mapping import (
 )
 from abicus.apps.outflows.categories import load_categories
 from abicus.apps.outflows.guess import best_guess, build_corpus, load_guess_config
-from abicus.apps.outflows.categorise import UNCATEGORISED, categorise_dataframe, load_mapping
+from abicus.apps.outflows.categorise import (
+    UNCATEGORISED,
+    categorise_dataframe,
+    load_mapping,
+    normalise_text,
+)
 from abicus.apps.outflows.html_export import build_html
 from abicus.apps.outflows.transaction_history import (
     DEFAULT_PATH as HISTORY_PATH,
@@ -621,7 +626,7 @@ def api_mapping_add_rule(session_id: str, body: MappingAddRuleBody):
         )
 
     substring = body.substring.strip()
-    sub_lower = substring.lower()
+    sub_lower = normalise_text(substring)
     if len(sub_lower) < 2:
         raise HTTPException(
             status_code=400,
@@ -654,7 +659,8 @@ def api_mapping_add_rule(session_id: str, body: MappingAddRuleBody):
     # Compile applies full longest-match semantics).
     df: pd.DataFrame = state["df"]
     mask = (df["category"] == UNCATEGORISED) & (
-        df["description"].astype(str).str.lower().str.contains(sub_lower, regex=False)
+        df["description"].astype(str).map(normalise_text)
+        .str.contains(sub_lower, regex=False)
     )
     df.loc[mask, "category"] = category
     df.loc[mask, "matched_pattern"] = sub_lower
@@ -767,8 +773,8 @@ def api_history_categorise(session_id: str, body: HistoryCategoriseBody):
     # compile time: exact description match (case-insensitive), category
     # set, matched_pattern = the description itself.
     mask = (
-        df["description"].astype(str).str.strip().str.lower()
-        == description.lower()
+        df["description"].astype(str).map(normalise_text)
+        == normalise_text(description)
     ) & (df["category"] == UNCATEGORISED)
     df.loc[mask, "category"] = category
     df.loc[mask, "matched_pattern"] = description
