@@ -4,6 +4,33 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ---
 
+## v2.1.2 — Statement format auto-detection (2026-08-29)
+
+*Outflows.* Dropping a file onto the upload zone now auto-detects its
+format and pre-selects the account dropdown.
+
+- **Detection is try-parsing**: a new `/detect` endpoint runs the file
+  through every registered parser; the parsers' own strict header
+  validation is the format fingerprint. Detection therefore can never
+  disagree with what Compile would accept, and it stays correct
+  automatically when a parser evolves.
+- **No new config**: the format → account mapping is derived by inverting
+  `accounts.yaml` at request time.
+- Each file row shows a small badge with the outcome:
+  - **✓ \<account\>** (green) — exactly one format matched, mapping to
+    exactly one account: the dropdown snaps to it.
+  - **? not recognised** (amber) — no parser accepted the file (new or
+    unknown format): nothing is auto-set; pick manually.
+  - **~ ambiguous** (amber) — the file parses under more than one format:
+    no guess is made; the tooltip lists the candidates.
+  - **✓ \<format\> — pick account** (amber) — format detected but several
+    accounts share it: the account choice stays yours.
+- A manual dropdown change supersedes detection and clears the badge.
+  Server-side validation on Compile is unchanged, so detection can help
+  but never silently mislead.
+
+---
+
 ## v2.1.1 — Parser / label separation (2026-08-29)
 
 *Outflows.* The per-file selection on upload is now two dropdowns instead of
