@@ -118,8 +118,11 @@ code {
   border-radius: 4px;
   background: var(--bg-card);
   color: var(--text-primary);
-  min-width: 9rem;
 }
+/* Fixed widths so the selects line up across file rows regardless of the
+   option text each row happens to show. */
+.file-row select:first-of-type { width: 8rem; }   /* account */
+.file-row select:last-of-type { width: 14rem; }   /* label */
 .detect-badge {
   display: inline-block;
   margin-left: 0.5rem;
