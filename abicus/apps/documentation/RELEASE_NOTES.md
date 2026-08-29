@@ -6,6 +6,18 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Fix: whitespace-insensitive matching.* Statement exports pad description
+fields with space runs and newlines (e.g. UOB:
+`EVERYDAY APP             SINGAPORE    SG` + a `Ref No:` line) that HTML
+collapses when rendered — so a rule created with highlight-to-map carried
+single spaces and never matched the raw text. Matching is now
+whitespace-normalised on both sides everywhere, via a shared
+`categorise.normalise_text()` (lowercase + collapse whitespace runs):
+substring rules, the history exact-match layer, mapping keys at build and
+load (existing `mapping.json`/`mapping.xlsx` files work unchanged),
+history dedupe/upsert keys, and both immediate-recategorisation
+endpoints. No rule a human writes can depend on invisible padding.
+
 *New: Refund transactions panel.* Refunds/credits (amount ≤ 0) are no
 longer silently dropped at compile: they are kept, hidden from the
 dashboard by default, and listed in a new *Refund transactions* panel
