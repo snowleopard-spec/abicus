@@ -242,6 +242,61 @@ def save_history_table(
     return len(df), warnings
 
 
+def upsert_history_category(
+    date_str: str,
+    description: str,
+    amount: float,
+    category: str,
+    path: Path = DEFAULT_PATH,
+) -> str:
+    """
+    Add or update a single history row with a filled-in category.
+
+    Matches on description (case-insensitive, stripped). If the description
+    is already in history — e.g. from an earlier bulk append that left the
+    category blank — its category is set; otherwise a new row is appended.
+
+    Returns "updated" or "added".
+    """
+    desc_clean = str(description).strip()
+    if not desc_clean:
+        raise ValueError("Description is empty.")
+
+    existing = load_history_dataframe(path)
+    key = desc_clean.lower()
+
+    mask = (
+        existing["description"]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        == key
+    )
+    if mask.any():
+        existing.loc[mask, "category"] = category
+        combined = existing
+        outcome = "updated"
+    else:
+        new_row = pd.DataFrame(
+            [{
+                "date": pd.to_datetime(date_str),
+                "description": desc_clean,
+                "amount": amount,
+                "category": category,
+            }],
+            columns=REQUIRED_COLUMNS,
+        )
+        combined = (
+            new_row if existing.empty
+            else pd.concat([existing, new_row], ignore_index=True)
+        )
+        outcome = "added"
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_excel(path, index=False)
+    return outcome
+
+
 def append_to_history(
     new_rows: pd.DataFrame,
     path: Path = DEFAULT_PATH,

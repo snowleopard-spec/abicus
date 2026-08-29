@@ -387,15 +387,7 @@
   // ---- Collapsible panels (unmapped / excluded / duplicates) ----
   function renderPanels(dated, dedup, dashboardRows, excluded) {
     const unmapped = dashboardRows.filter((r) => r.category === UNCAT);
-    renderMiniPanel(
-      "unmapped-panel", "unmapped-summary", "unmapped-intro", "unmapped-rows",
-      `Unmapped transactions (${unmapped.length})`,
-      unmapped.length
-        ? "These descriptions did not match any pattern in your mapping table. " +
-          "Use the download below to grow mapping.xlsx."
-        : "Every transaction was mapped. Nice.",
-      unmapped, ["date", "description", "amount", "account"],
-    );
+    renderUnmappedPanel(unmapped);
 
     const excludedRows = excluded.size
       ? dedup.filter((r) => excluded.has(r.category) && !r._reincluded)
@@ -416,6 +408,151 @@
 
     const duplicates = dated.filter((r) => r.duplicate);
     renderDuplicatesPanel(duplicates);
+  }
+
+  function renderUnmappedPanel(unmapped) {
+    $("unmapped-summary").textContent = `Unmapped transactions (${unmapped.length})`;
+    $("unmapped-intro").textContent = unmapped.length
+      ? "These descriptions did not match any pattern in your mapping table. " +
+        "Use the download below to grow mapping.xlsx, or click +H to pick a " +
+        "category and save the row to your transaction history."
+      : "Every transaction was mapped. Nice.";
+
+    const wrap = $("unmapped-rows");
+    wrap.innerHTML = "";
+    if (unmapped.length === 0) return;
+
+    const table = document.createElement("table");
+    table.className = "mini-table";
+    table.innerHTML =
+      "<thead><tr>" +
+      "<th>Date</th><th>Description</th><th>Amount</th><th>Account</th>" +
+      "<th class=\"action-col\"></th>" +
+      "</tr></thead>";
+    const tbody = document.createElement("tbody");
+    for (const r of unmapped) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
+        `<td>${escapeHtml(String(r.description ?? ""))}</td>` +
+        `<td class="amount">${fmtSGD.format(r.amount)}</td>` +
+        `<td>${escapeHtml(String(r.account ?? ""))}</td>`;
+      const actionCell = document.createElement("td");
+      actionCell.className = "action-col";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "unsuppress-btn addhist-btn";
+      btn.title = "Add to transaction history with a category";
+      btn.setAttribute(
+        "aria-label",
+        "Add this transaction to the transaction history with a category",
+      );
+      btn.textContent = "+H";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openCategoryMenu(btn, r._idx);
+      });
+      actionCell.appendChild(btn);
+      tr.appendChild(actionCell);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+
+  // ---- +H category dropdown ----
+  // Appended to <body> (the panel wrapper clips overflow) and anchored to
+  // the clicked button. Only one open at a time.
+  let openMenu = null;
+
+  function closeCategoryMenu() {
+    if (!openMenu) return;
+    openMenu.remove();
+    openMenu = null;
+    document.removeEventListener("click", closeCategoryMenu);
+    document.removeEventListener("keydown", onMenuKeydown);
+    window.removeEventListener("scroll", closeCategoryMenu, true);
+  }
+
+  function onMenuKeydown(e) {
+    if (e.key === "Escape") closeCategoryMenu();
+  }
+
+  function openCategoryMenu(anchorBtn, rowIdx) {
+    closeCategoryMenu();
+    const cats = (state.config.categories || []).filter((c) => c !== UNCAT);
+    if (!cats.length) {
+      toast("No categories found in categories.txt.", "error");
+      return;
+    }
+
+    const menu = document.createElement("div");
+    menu.className = "cat-menu";
+    menu.setAttribute("role", "menu");
+    for (const cat of cats) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "cat-menu-item";
+      item.setAttribute("role", "menuitem");
+      item.textContent = cat;
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeCategoryMenu();
+        addToHistory(rowIdx, cat);
+      });
+      menu.appendChild(item);
+    }
+    menu.addEventListener("click", (e) => e.stopPropagation());
+
+    document.body.appendChild(menu);
+    const rect = anchorBtn.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    let top = rect.bottom + 4;
+    if (top + menuRect.height > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - menuRect.height - 4);
+    }
+    let left = rect.right - menuRect.width;
+    if (left < 8) left = 8;
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+
+    openMenu = menu;
+    // Deferred so the click that opened the menu doesn't immediately close it.
+    setTimeout(() => {
+      document.addEventListener("click", closeCategoryMenu);
+      document.addEventListener("keydown", onMenuKeydown);
+      window.addEventListener("scroll", closeCategoryMenu, true);
+    }, 0);
+  }
+
+  async function addToHistory(rowIdx, category) {
+    const row = state.session.rows[rowIdx];
+    if (!row) return;
+    let resp;
+    try {
+      resp = await api.postJson(
+        `/api/outflows/history/categorise/${state.session.session_id}`,
+        { row_idx: rowIdx, category },
+      );
+    } catch {
+      return; // api.js already toasted the error
+    }
+    for (const idx of resp.updated_idx || []) {
+      const r = state.session.rows[idx];
+      if (r) {
+        r.category = resp.category;
+        r.matched_pattern = String(r.description ?? "").trim();
+      }
+    }
+    const n = (resp.updated_idx || []).length;
+    toast(
+      `${resp.status === "updated" ? "Updated" : "Added"} ` +
+      `"${row.description}" in transaction history as ${resp.category}` +
+      (n > 1 ? ` — ${n} matching rows recategorised.` : "."),
+      "info",
+    );
+    saveSession();
+    renderForDateRange();
   }
 
   function renderExcludedPanel(excludedRows, intro) {

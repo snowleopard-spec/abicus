@@ -29,6 +29,7 @@ from abicus.apps.outflows.transaction_history import (
     load_history_mapping,
     load_history_table,
     save_history_table,
+    upsert_history_category,
 )
 from abicus.apps.outflows.parsers.format_a import parse as parse_format_a
 from abicus.apps.outflows.parsers.format_b import parse as parse_format_b
@@ -499,6 +500,72 @@ def api_history_append(session_id: str, body: DateRangeBody):
         raise HTTPException(status_code=400, detail=str(e))
 
     return {"n_added": n_added, "n_skipped": n_skipped}
+
+
+class HistoryCategoriseBody(BaseModel):
+    row_idx: int
+    category: str
+
+
+@api_router.post("/history/categorise/{session_id}")
+def api_history_categorise(session_id: str, body: HistoryCategoriseBody):
+    """Assign a category to a single unmapped row: upsert it into
+    transaction_history.xlsx as an exact-match rule, then recategorise every
+    matching unmapped row in the live session so the change takes effect
+    immediately (no re-upload needed)."""
+    state = _get_session(session_id)
+
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"categories.txt: {e}")
+
+    category = body.category.strip()
+    if category not in valid_cats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Category '{category}' is not in categories.txt.",
+        )
+
+    df: pd.DataFrame = state["df"]
+    if body.row_idx < 0 or body.row_idx >= len(df):
+        raise HTTPException(status_code=400, detail="Invalid row index.")
+
+    row = df.iloc[body.row_idx]
+    if row["category"] != UNCATEGORISED:
+        raise HTTPException(
+            status_code=400,
+            detail="Row is no longer unmapped — re-Compile to refresh.",
+        )
+
+    description = str(row["description"]).strip()
+    try:
+        outcome = upsert_history_category(
+            row["date"].strftime("%Y-%m-%d"),
+            description,
+            float(row["amount"]),
+            category,
+            HISTORY_PATH,
+        )
+    except (ValueError, PermissionError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Apply to the live session the same way the history layer would at
+    # compile time: exact description match (case-insensitive), category
+    # set, matched_pattern = the description itself.
+    mask = (
+        df["description"].astype(str).str.strip().str.lower()
+        == description.lower()
+    ) & (df["category"] == UNCATEGORISED)
+    df.loc[mask, "category"] = category
+    df.loc[mask, "matched_pattern"] = description
+    state["payload"]["rows"] = _df_to_records(df)
+
+    return {
+        "status": outcome,
+        "category": category,
+        "updated_idx": [int(i) for i in df.index[mask]],
+    }
 
 
 @api_router.post("/db/commit/{session_id}")
