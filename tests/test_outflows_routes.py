@@ -143,21 +143,33 @@ def test_mapping_add_rule(app, tmp_path, monkeypatch):
         outflows.SESSIONS.pop("test-map-rule", None)
 
 
-def test_config_exposes_parser_formats(app):
+def test_config_accounts_carry_default_labels(app):
+    """Every account entry exposes a labels list, defaulting to just its
+    own name (legacy behaviour)."""
     c = TestClient(app)
     r = c.get("/api/outflows/config")
     assert r.status_code == 200
-    assert r.json()["formats"] == [f"Format {x}" for x in "ABCDEF"]
+    accounts = r.json()["accounts"]
+    assert accounts, "expected at least one account"
+    for a in accounts:
+        assert a["labels"], a
+        assert a["name"] in a["labels"], a
 
 
-def test_compile_rejects_label_not_allowed_for_parser(app, monkeypatch):
-    """A label may only be used with the parser it is registered under in
-    accounts.yaml."""
+def test_compile_rejects_label_not_allowed_for_account(app, monkeypatch):
+    """A label may only be used if it is in the account's permissible
+    labels list from accounts.yaml."""
     from abicus.apps.outflows import router as outflows
 
     monkeypatch.setattr(
         outflows, "load_accounts",
-        lambda valid_formats=None: {"Amex PPS": "Format A", "UOB One Card": "Format C"},
+        lambda valid_formats=None: {
+            "Amex PPS": {"format": "Format A", "labels": ["Amex PPS"]},
+            "UOB One Card": {
+                "format": "Format C",
+                "labels": ["UOB One Card", "UOB One (household)"],
+            },
+        },
     )
     monkeypatch.setattr(
         outflows, "build_mapping_if_changed", lambda: (False, 0, [])
@@ -167,19 +179,19 @@ def test_compile_rejects_label_not_allowed_for_parser(app, monkeypatch):
     r = c.post(
         "/api/outflows/compile",
         files=[("files", ("stmt.csv", b"dummy", "text/csv"))],
-        data={"parsers": ["Format C"], "labels": ["Amex PPS"]},
+        data={"accounts": ["UOB One Card"], "labels": ["Amex PPS"]},
     )
     assert r.status_code == 400
-    assert "not an allowed label for Format C" in r.json()["detail"]
-    assert "UOB One Card" in r.json()["detail"]
+    assert "not an allowed label for account 'UOB One Card'" in r.json()["detail"]
+    assert "UOB One (household)" in r.json()["detail"]
 
     r = c.post(
         "/api/outflows/compile",
         files=[("files", ("stmt.csv", b"dummy", "text/csv"))],
-        data={"parsers": ["Format Z"], "labels": ["Amex PPS"]},
+        data={"accounts": ["Nope"], "labels": ["Nope"]},
     )
     assert r.status_code == 400
-    assert "Unknown parser" in r.json()["detail"]
+    assert "Unknown account" in r.json()["detail"]
 
 
 def test_db_commit_honours_manual_exclusions(app, monkeypatch):

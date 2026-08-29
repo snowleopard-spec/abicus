@@ -178,8 +178,10 @@ def api_config():
         all_cats, excluded = set(), set()
 
     return {
-        "accounts": [{"name": name, "format": fmt} for name, fmt in accounts.items()],
-        "formats": list(PARSERS.keys()),
+        "accounts": [
+            {"name": name, "format": info["format"], "labels": info["labels"]}
+            for name, info in accounts.items()
+        ],
         "categories": sorted(all_cats),
         "excluded": sorted(excluded),
     }
@@ -188,15 +190,15 @@ def api_config():
 @api_router.post("/compile")
 async def api_compile(
     files: list[UploadFile] = File(...),
-    parsers: list[str] = Form(...),
+    accounts: list[str] = Form(...),
     labels: list[str] = Form(...),
 ):
-    if len(files) != len(parsers) or len(files) != len(labels):
+    if len(files) != len(accounts) or len(files) != len(labels):
         raise HTTPException(
             status_code=400,
             detail=(
-                f"Expected {len(files)} parser and label selections, "
-                f"got {len(parsers)} parsers / {len(labels)} labels."
+                f"Expected {len(files)} account and label selections, "
+                f"got {len(accounts)} accounts / {len(labels)} labels."
             ),
         )
 
@@ -212,23 +214,26 @@ async def api_compile(
 
     frames = []
     unfamiliar_accounts: set[str] = set()
-    for upload, format_name, label in zip(files, parsers, labels):
-        if format_name not in PARSERS:
+    for upload, chosen_account, label in zip(files, accounts, labels):
+        entry = account_map.get(chosen_account)
+        if entry is None:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unknown parser '{format_name}' for file '{upload.filename}'.",
+                detail=f"Unknown account '{chosen_account}' for file '{upload.filename}'.",
             )
-        # The label must be one of the accounts registered for this parser in
-        # accounts.yaml — the allowed-labels subset per parser.
-        if account_map.get(label) != format_name:
-            allowed = sorted(n for n, f in account_map.items() if f == format_name)
+        # The label must be in the account's permissible set — by default
+        # just the account name itself (legacy behaviour), widened by an
+        # optional 'labels' list on the accounts.yaml entry.
+        if label not in entry["labels"]:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Label '{label}' is not an allowed label for {format_name} "
-                    f"(file '{upload.filename}'). Allowed: {allowed or 'none — add one to accounts.yaml'}."
+                    f"Label '{label}' is not an allowed label for account "
+                    f"'{chosen_account}' (file '{upload.filename}'). "
+                    f"Allowed: {entry['labels']}."
                 ),
             )
+        format_name = entry["format"]
         parser = PARSERS[format_name]
         try:
             file_bytes = await upload.read()
@@ -238,7 +243,7 @@ async def api_compile(
                 status_code=400,
                 detail=(
                     f"Failed to parse '{upload.filename}' as "
-                    f"{label} ({format_name}): {e}"
+                    f"{chosen_account} ({format_name}): {e}"
                 ),
             )
 
