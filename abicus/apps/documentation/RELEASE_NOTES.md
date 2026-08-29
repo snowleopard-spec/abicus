@@ -27,14 +27,30 @@ Newest release at the top. Versions correspond to git tags on the repo.
   a Python project. Not scheduled; triggers when the corpus outgrows pure
   Python.
 
-*In design (not yet built):*
+*New feature:*
 
-- **Category guesser for unmapped rows** — a free-deletion edit distance
-  (substitutions cost 1, deletions from the query free — equivalently
-  `len(candidate) − LCS`) scored against the description → category pairs
-  in `transactions.db` and `transaction_history.xlsx`; best guess shown as
-  a clickable blue pill after Amount, accepting it files the row to
-  history via the existing `+H` endpoint.
+- **Category guesser for unmapped rows** (`guess.py`). Each unmapped row
+  gets a best-guess category in a new Guess column (after Amount), shown
+  as a clickable blue pill — `≈ Groceries`, with the matched historical
+  description and score in the tooltip. Clicking accepts: the row is filed
+  to `transaction_history.xlsx` with the guessed category via the same
+  endpoint as `+H`, with the same immediate recategorisation.
+  - Metric: free-deletion edit distance — substitutions cost 1, deletions
+    from the query are free (equivalently `len(candidate) − LCS`), so
+    reference numbers and prefixes cost nothing. Score = fraction of the
+    known description matched.
+  - Corpus: description → category pairs from `transactions.db`
+    (most-recent commit wins per description) and the filled-in rows of
+    `transaction_history.xlsx` (history wins on conflict). Categories not
+    in `categories.txt` are never suggested.
+  - Guardrails in `config/guess.yaml` (optional; defaults in code):
+    `min_score` and `min_candidate_length`. Calibrated leave-one-out on
+    the real 693-description corpus: min_score **0.90** (default) → 85%
+    precision at 67% coverage; 0.85 → 79%/89%. Precision favoured — a
+    wrong guess is worse than no guess.
+  - Guessing runs server-side as a best-effort async pass after Compile /
+    restore; pills appear when ready and refresh after history or mapping
+    changes. No guess clears the bar → the cell is simply empty.
 
 ---
 
