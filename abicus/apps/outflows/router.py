@@ -333,6 +333,9 @@ class CommitBody(BaseModel):
     # has overridden via the ⟲ buttons — hidden by default, but committed.
     unsuppressed_dup_idx: list[int] = []
     reincluded_excl_idx: list[int] = []
+    # Rows the user excluded by hand via the × button — visible by default,
+    # but hidden and therefore not committed.
+    excluded_row_idx: list[int] = []
 
 
 def _get_session(session_id: str) -> dict:
@@ -351,11 +354,12 @@ def _commit_view(
     end_date: date,
     unsuppressed_dup_idx: list[int],
     reincluded_excl_idx: list[int],
+    excluded_row_idx: list[int] | None = None,
 ) -> pd.DataFrame:
     """Rebuild the exact set of rows the user sees in the Categorised
-    Transactions table, honouring their per-row ⟲ overrides. Row indices in
-    the override sets refer to positions in the raw compile DataFrame (which
-    is what `_df_to_records` iterates), not into any filtered view."""
+    Transactions table, honouring their per-row ⟲/× overrides. Row indices
+    in the override sets refer to positions in the raw compile DataFrame
+    (which is what `_df_to_records` iterates), not into any filtered view."""
     df: pd.DataFrame = state["df"]
     mask_range = (df["date"] >= pd.Timestamp(start_date)) & (
         df["date"] <= pd.Timestamp(end_date)
@@ -369,13 +373,17 @@ def _commit_view(
 
     unsup = set(unsuppressed_dup_idx)
     reinc = set(reincluded_excl_idx)
+    manual = set(excluded_row_idx or [])
 
     hidden_dup = df_ranged["duplicate"] & ~df_ranged.index.isin(unsup)
     hidden_excl = (
         df_ranged["category"].isin(excluded) & ~df_ranged.index.isin(reinc)
         if excluded else pd.Series(False, index=df_ranged.index)
     )
-    return df_ranged[~hidden_dup & ~hidden_excl].reset_index(drop=True)
+    hidden_manual = df_ranged.index.isin(manual)
+    return df_ranged[~hidden_dup & ~hidden_excl & ~hidden_manual].reset_index(
+        drop=True
+    )
 
 
 def _scoped_views(state: dict, start_date: date, end_date: date) -> dict:
@@ -652,6 +660,7 @@ def api_db_commit(session_id: str, body: CommitBody):
     view = _commit_view(
         state, body.start_date, body.end_date,
         body.unsuppressed_dup_idx, body.reincluded_excl_idx,
+        body.excluded_row_idx,
     )
     if view.empty:
         return {"inserted": 0, "updated": 0, "total_in_db": db.upsert([])["total_in_db"]}

@@ -5,13 +5,15 @@
     nextFileId: 1,
     session: null,                                 // /api/outflows/compile payload
     dateRange: { from: null, to: null },
-    tableFilter: { category: "All", account: "All" },
+    tableFilter: { category: "All", account: "All", search: "" },
     table: null,
     scoped: null,                                  // {rows, dedup, dashboardRows}
-    // Per-row overrides toggled from the Duplicate / Excluded panels.
+    // Per-row overrides toggled from the Duplicate / Excluded panels and the
+    // × button on the Categorised Transactions table.
     // Stored as Sets of row _idx so persistence (below) is compact.
     unsuppressedDup: new Set(),
     reincludedExcl: new Set(),
+    manualExcl: new Set(),
   };
 
   // sessionStorage keys — cleared on tab close, per-tab so nothing leaks
@@ -65,6 +67,7 @@
         tableFilter: state.tableFilter,
         unsuppressedDup: [...state.unsuppressedDup],
         reincludedExcl: [...state.reincludedExcl],
+        manualExcl: [...state.manualExcl],
       }));
     } catch { /* quota / privacy mode — silently ignore */ }
   }
@@ -100,6 +103,9 @@
     for (const idx of saved.reincludedExcl || []) {
       const r = state.session.rows[idx];
       if (r) { r._reincluded = true; state.reincludedExcl.add(idx); }
+    }
+    for (const idx of saved.manualExcl || []) {
+      if (state.session.rows[idx]) state.manualExcl.add(idx);
     }
     // Duplicates count is a stored summary — decrement for restored un-suppresses.
     state.session.duplicates_count = Math.max(
@@ -218,6 +224,7 @@
       // Fresh session — clear any prior overrides.
       state.unsuppressedDup = new Set();
       state.reincludedExcl = new Set();
+      state.manualExcl = new Set();
       hide($("restored-notice"));
       hide(statusEl);
       renderResults();
@@ -334,9 +341,11 @@
     const dedup = rows.filter((r) => !r.duplicate);
     const excluded = new Set(state.config.excluded || []);
     // A row is hidden from the dashboard iff its category is excluded AND the
-    // user hasn't re-included it individually via the ⟲ button.
-    const isHidden = (r) => excluded.has(r.category) && !r._reincluded;
-    const dashboardRows = excluded.size ? dedup.filter((r) => !isHidden(r)) : dedup;
+    // user hasn't re-included it individually via the ⟲ button — or the user
+    // excluded it by hand via the × button on the Categorised table.
+    const isHidden = (r) =>
+      (excluded.has(r.category) && !r._reincluded) || state.manualExcl.has(r._idx);
+    const dashboardRows = dedup.filter((r) => !isHidden(r));
 
     if (rows.length === 0) {
       $("empty-range").textContent = `No transactions in selected range (${from} to ${to}).`;
@@ -364,19 +373,28 @@
     } else hide(dupCap);
 
     // Exclusions caption — counts only rows that are still hidden after any
-    // per-row re-inclusions.
+    // per-row re-inclusions, plus rows excluded by hand via ×.
     const excCap = $("exclusions-caption");
-    if (excluded.size) {
-      const hiddenRows = dedup.filter(isHidden);
-      const excludedInData = [...new Set(hiddenRows.map((r) => r.category))].sort();
+    const hiddenByCat = dedup.filter(
+      (r) => excluded.has(r.category) && !r._reincluded,
+    );
+    const nManual = dedup.filter((r) => state.manualExcl.has(r._idx)).length;
+    if (hiddenByCat.length || nManual) {
+      const bits = [];
+      const excludedInData = [...new Set(hiddenByCat.map((r) => r.category))].sort();
       if (excludedInData.length) {
-        const nHidden = hiddenRows.length;
-        excCap.textContent =
-          `Hidden from dashboard: ${excludedInData.join(", ")} ` +
-          `(${nHidden} transaction${nHidden !== 1 ? "s" : ""}). ` +
-          `Downloads include all categories.`;
-        show(excCap);
-      } else hide(excCap);
+        bits.push(
+          `${excludedInData.join(", ")} (${hiddenByCat.length} ` +
+          `transaction${hiddenByCat.length !== 1 ? "s" : ""})`,
+        );
+      }
+      if (nManual) {
+        bits.push(`${nManual} excluded by hand via ×`);
+      }
+      excCap.textContent =
+        `Hidden from dashboard: ${bits.join("; ")}. ` +
+        `Downloads include all categories.`;
+      show(excCap);
     } else hide(excCap);
 
     state.scoped = { rows, dedup, dashboardRows };
@@ -390,20 +408,23 @@
     const unmapped = dashboardRows.filter((r) => r.category === UNCAT);
     renderUnmappedPanel(unmapped);
 
-    const excludedRows = excluded.size
-      ? dedup.filter((r) => excluded.has(r.category) && !r._reincluded)
-      : [];
+    const excludedRows = dedup.filter(
+      (r) =>
+        (excluded.has(r.category) && !r._reincluded) ||
+        state.manualExcl.has(r._idx),
+    );
     let excludedIntro;
-    if (!excluded.size) {
-      excludedIntro = "No categories are flagged as excluded in categories.txt.";
-    } else if (excludedRows.length === 0) {
-      excludedIntro = `No transactions matched any excluded categories (${[...excluded].sort().join(", ")}).`;
+    if (excludedRows.length === 0) {
+      excludedIntro = excluded.size
+        ? `No transactions matched any excluded categories (${[...excluded].sort().join(", ")}), and none were excluded by hand.`
+        : "No categories are flagged as excluded in categories.txt, and no transactions were excluded by hand.";
     } else {
       excludedIntro =
         "These transactions are hidden from the dashboard view because " +
-        "their category is flagged with ,exclude in categories.txt. " +
-        "They are still included in the downloads. Click ⟲ to include a " +
-        "row in the dashboard anyway.";
+        "their category is flagged with ,exclude in categories.txt, or " +
+        "because they were excluded by hand with the × button on the " +
+        "Categorised Transactions table. They are still included in the " +
+        "downloads. Click ⟲ to include a row in the dashboard anyway.";
     }
     renderExcludedPanel(excludedRows, excludedIntro);
 
@@ -693,7 +714,10 @@
       btn.title = "Include this row in the dashboard";
       btn.setAttribute("aria-label", "Include this excluded transaction in the dashboard");
       btn.textContent = "⟲";
-      btn.addEventListener("click", () => reincludeExcluded(r._idx));
+      btn.addEventListener("click", () => {
+        if (state.manualExcl.has(r._idx)) unexcludeRow(r._idx);
+        else reincludeExcluded(r._idx);
+      });
       actionCell.appendChild(btn);
       tr.appendChild(actionCell);
       tbody.appendChild(tr);
@@ -708,6 +732,20 @@
     if (!target || target._reincluded) return;
     target._reincluded = true;
     state.reincludedExcl.add(idx);
+    saveSession();
+    renderForDateRange();
+  }
+
+  // ---- Manual per-row exclusion (× on the Categorised table) ----
+  function excludeRow(idx) {
+    if (typeof idx !== "number" || !state.session.rows[idx]) return;
+    state.manualExcl.add(idx);
+    saveSession();
+    renderForDateRange();
+  }
+
+  function unexcludeRow(idx) {
+    if (!state.manualExcl.delete(idx)) return;
     saveSession();
     renderForDateRange();
   }
@@ -857,6 +895,11 @@
       if (state.scoped) renderTable(state.scoped.dashboardRows);
       saveSession();
     });
+    $("filter-search").addEventListener("input", () => {
+      state.tableFilter.search = $("filter-search").value;
+      if (state.scoped) renderTable(state.scoped.dashboardRows);
+      saveSession();
+    });
   }
 
   function renderTable(rows) {
@@ -867,6 +910,16 @@
     let view = rows;
     if (category !== "All") view = view.filter((r) => r.category === category);
     if (account !== "All") view = view.filter((r) => r.account === account);
+    const q = (state.tableFilter.search || "").trim().toLowerCase();
+    if (q) {
+      view = view.filter((r) =>
+        String(r.description ?? "").toLowerCase().includes(q));
+    }
+    // Restored sessions carry the search text in state, not the input.
+    const searchEl = $("filter-search");
+    if (searchEl.value !== (state.tableFilter.search || "")) {
+      searchEl.value = state.tableFilter.search || "";
+    }
 
     if (!state.table) {
       state.table = new Tabulator("#transactions-table", {
@@ -883,6 +936,14 @@
           { title: "Category", field: "category", width: 160 },
           { title: "Account", field: "account", width: 160 },
           { title: "Matched pattern", field: "matched_pattern", minWidth: 140 },
+          { title: "", field: "_idx", width: 52, hozAlign: "center",
+            headerSort: false,
+            formatter: () =>
+              '<button type="button" class="unsuppress-btn row-excl-btn" ' +
+              'title="Exclude this transaction from the dashboard" ' +
+              'aria-label="Exclude this transaction from the dashboard">' +
+              "×</button>",
+            cellClick: (e, cell) => excludeRow(cell.getRow().getData()._idx) },
         ],
       });
     } else {
@@ -1007,10 +1068,11 @@
       const res = await api.postJson(`/api/outflows/db/commit/${sessionId()}`, {
         start_date: state.dateRange.from,
         end_date: state.dateRange.to,
-        // Send the client-side ⟲ overrides so what the user sees is what
+        // Send the client-side ⟲/× overrides so what the user sees is what
         // gets committed. Server rebuilds the visible row set with these.
         unsuppressed_dup_idx: [...state.unsuppressedDup],
         reincluded_excl_idx: [...state.reincludedExcl],
+        excluded_row_idx: [...state.manualExcl],
       });
       const { inserted, updated, total_in_db } = res;
       const parts = [];

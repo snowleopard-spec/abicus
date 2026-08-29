@@ -141,3 +141,44 @@ def test_mapping_add_rule(app, tmp_path, monkeypatch):
         assert r.status_code == 400
     finally:
         outflows.SESSIONS.pop("test-map-rule", None)
+
+
+def test_db_commit_honours_manual_exclusions(app, monkeypatch):
+    """Rows excluded by hand via the × button (excluded_row_idx) are
+    dropped from the committed view."""
+    from abicus.apps.outflows import router as outflows
+
+    monkeypatch.setattr(outflows, "load_categories", lambda: ({"Groceries"}, set()))
+    captured = {}
+
+    def fake_upsert(payload):
+        captured["payload"] = payload
+        return {"inserted": len(payload), "updated": 0, "total_in_db": len(payload)}
+
+    monkeypatch.setattr(outflows.db, "upsert", fake_upsert)
+
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-08-01", "2026-08-02", "2026-08-03"]),
+        "description": ["KEEP ME", "EXCLUDE ME", "KEEP ME TOO"],
+        "amount": [1.0, 2.0, 3.0],
+        "account": ["A", "A", "A"],
+        "category": ["Groceries", "Groceries", "Groceries"],
+        "matched_pattern": ["x", "x", "x"],
+        "source_file": ["f", "f", "f"],
+        "duplicate": [False, False, False],
+        "pre_categorised": [False, False, False],
+    })
+    outflows.SESSIONS["test-commit-excl"] = {"df": df}
+    try:
+        c = TestClient(app)
+        r = c.post("/api/outflows/db/commit/test-commit-excl", json={
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-31",
+            "excluded_row_idx": [1],
+        })
+        assert r.status_code == 200, r.text
+        assert r.json()["inserted"] == 2
+        descs = [row["description"] for row in captured["payload"]]
+        assert descs == ["KEEP ME", "KEEP ME TOO"]
+    finally:
+        outflows.SESSIONS.pop("test-commit-excl", None)
