@@ -1,6 +1,6 @@
 /* ---------- Outflows theme — earthy / Playfair ---------- */
 body[data-active="outflows"] {
-  --bg-app: #FAF7F2;
+  --bg-app: #f6f7fa; /* grey page ground; cards/panels/sidebar stay light */
   --bg-sidebar: #FFFFFF;
   --bg-card: #FFFFFF;
   --bg-hover: #EDE7DF;
@@ -274,21 +274,24 @@ code {
   color: var(--text-muted);
   gap: 0.25rem;
 }
-.table-filters .toggle-matched {
-  margin-left: auto;
-  align-self: flex-end;
-  font-family: inherit;
-  font-size: 0.82rem;
-  padding: 0.4rem 0.7rem;
-  border: 1px solid var(--border);
+/* Checkbox pill, same pattern as the Hide-balances control in My Assets */
+.check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
   border-radius: 4px;
-  background: var(--bg-card);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
   color: var(--text-secondary);
   cursor: pointer;
+  user-select: none;
 }
-.table-filters .toggle-matched:hover {
-  background: var(--surface-alt);
-  color: var(--text-primary);
+.check-pill input { margin: 0; }
+.table-filters .toggle-matched-pill {
+  margin-left: auto;
+  align-self: flex-end;
 }
 .table-filters select,
 .table-filters input[type="search"] {
@@ -301,6 +304,7 @@ code {
   color: var(--text-primary);
   min-width: 14rem;
 }
+.table-filters input[type="search"] { width: 24rem; }
 
 /* ---------- Tabulator (cream theme) ---------- */
 .tabulator {
@@ -496,10 +500,10 @@ code {
   flex-direction: column;
   gap: 1rem;
 }
+/* Same size/weight as the card h2s ("Categorised Transactions"). */
 .download-group h3 {
+  font-size: 1.5rem;
   margin: 0;
-  padding-bottom: 0.4rem;
-  border-bottom: 1px solid var(--border-light);
 }
 .download-tile {
   display: flex;

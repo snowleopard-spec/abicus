@@ -6,7 +6,27 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*New: Refund transactions panel.* Refunds/credits (amount ≤ 0) are no
+longer silently dropped at compile: they are kept, hidden from the
+dashboard by default, and listed in a new *Refund transactions* panel
+under Duplicates. Each row has the same light-green **+** as the excluded
+panel to include it in the dashboard (its negative amount then counts in
+the totals and is committed to the DB); downloads and history append
+still exclude refunds. The "Refunds dropped" metric is unchanged.
+
 *Outflows polish after v2.1.2:*
+
+- Header: breadcrumb ("Tools / My Outflows") and the version chip
+  removed; "Edit history" / "Edit mapping" renamed to
+  "Transaction History Table" / "Mapping Table".
+- The Downloads / Database / Unmapped Help headers now match the card
+  titles (same size and font as "Categorised Transactions").
+- The description search box is wider.
+- "Show matched pattern" is now a checkbox pill, matching the
+  Hide-balances control in My Assets.
+- Download/database captions trimmed to one line each.
+- The page background is the shell grey top to bottom (cards, panels and
+  sidebar stay light).
 
 - The explainer paragraphs on the *Unmapped transactions* and *Excluded
   transactions* panels are removed — tables start right under the summary

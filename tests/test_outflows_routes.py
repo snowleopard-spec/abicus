@@ -286,19 +286,23 @@ def test_db_commit_honours_manual_exclusions(app, monkeypatch):
     monkeypatch.setattr(outflows.db, "upsert", fake_upsert)
 
     df = pd.DataFrame({
-        "date": pd.to_datetime(["2026-08-01", "2026-08-02", "2026-08-03"]),
-        "description": ["KEEP ME", "EXCLUDE ME", "KEEP ME TOO"],
-        "amount": [1.0, 2.0, 3.0],
-        "account": ["A", "A", "A"],
-        "category": ["Groceries", "Groceries", "Groceries"],
-        "matched_pattern": ["x", "x", "x"],
-        "source_file": ["f", "f", "f"],
-        "duplicate": [False, False, False],
-        "pre_categorised": [False, False, False],
+        "date": pd.to_datetime(
+            ["2026-08-01", "2026-08-02", "2026-08-03", "2026-08-04"]
+        ),
+        "description": ["KEEP ME", "EXCLUDE ME", "KEEP ME TOO", "REFUND"],
+        "amount": [1.0, 2.0, 3.0, -4.0],
+        "account": ["A", "A", "A", "A"],
+        "category": ["Groceries"] * 4,
+        "matched_pattern": ["x"] * 4,
+        "source_file": ["f"] * 4,
+        "duplicate": [False] * 4,
+        "refund": [False, False, False, True],
+        "pre_categorised": [False] * 4,
     })
     outflows.SESSIONS["test-commit-excl"] = {"df": df}
     try:
         c = TestClient(app)
+        # Refunds are hidden by default; row 1 excluded by hand.
         r = c.post("/api/outflows/db/commit/test-commit-excl", json={
             "start_date": "2026-08-01",
             "end_date": "2026-08-31",
@@ -308,5 +312,15 @@ def test_db_commit_honours_manual_exclusions(app, monkeypatch):
         assert r.json()["inserted"] == 2
         descs = [row["description"] for row in captured["payload"]]
         assert descs == ["KEEP ME", "KEEP ME TOO"]
+
+        # A re-included refund is committed.
+        r = c.post("/api/outflows/db/commit/test-commit-excl", json={
+            "start_date": "2026-08-01",
+            "end_date": "2026-08-31",
+            "reincluded_refund_idx": [3],
+        })
+        assert r.status_code == 200, r.text
+        descs = [row["description"] for row in captured["payload"]]
+        assert descs == ["KEEP ME", "EXCLUDE ME", "KEEP ME TOO", "REFUND"]
     finally:
         outflows.SESSIONS.pop("test-commit-excl", None)

@@ -14,6 +14,7 @@
     unsuppressedDup: new Set(),
     reincludedExcl: new Set(),
     manualExcl: new Set(),
+    reincludedRef: new Set(),
     guesses: {},                                   // row _idx → {category, matched, score}
   };
 
@@ -69,6 +70,7 @@
         unsuppressedDup: [...state.unsuppressedDup],
         reincludedExcl: [...state.reincludedExcl],
         manualExcl: [...state.manualExcl],
+        reincludedRef: [...state.reincludedRef],
       }));
     } catch { /* quota / privacy mode — silently ignore */ }
   }
@@ -107,6 +109,10 @@
     }
     for (const idx of saved.manualExcl || []) {
       if (state.session.rows[idx]) state.manualExcl.add(idx);
+    }
+    for (const idx of saved.reincludedRef || []) {
+      const r = state.session.rows[idx];
+      if (r) { r._refIncluded = true; state.reincludedRef.add(idx); }
     }
     // Duplicates count is a stored summary — decrement for restored un-suppresses.
     state.session.duplicates_count = Math.max(
@@ -356,6 +362,7 @@
       state.unsuppressedDup = new Set();
       state.reincludedExcl = new Set();
       state.manualExcl = new Set();
+      state.reincludedRef = new Set();
       state.guesses = {};
       hide($("restored-notice"));
       hide(statusEl);
@@ -471,7 +478,10 @@
     }
     const inRange = (r) => r.date >= from && r.date <= to;
     const rows = state.session.rows.filter(inRange);
-    const dedup = rows.filter((r) => !r.duplicate);
+    // Refunds are hidden like duplicates unless re-included via their +.
+    const dedup = rows.filter(
+      (r) => !r.duplicate && (!r.refund || r._refIncluded),
+    );
     const excluded = new Set(state.config.excluded || []);
     // A row is hidden from the dashboard iff its category is excluded AND the
     // user hasn't re-included it individually via the ⟲ button — or the user
@@ -556,6 +566,65 @@
 
     const duplicates = dated.filter((r) => r.duplicate);
     renderDuplicatesPanel(duplicates);
+
+    const refunds = dated.filter(
+      (r) => r.refund && !r.duplicate && !r._refIncluded,
+    );
+    renderRefundsPanel(refunds);
+  }
+
+  function renderRefundsPanel(refunds) {
+    $("refunds-summary").textContent = `Refund transactions (${refunds.length})`;
+    const introEl = $("refunds-intro");
+    introEl.textContent = refunds.length
+      ? ""
+      : "No refund transactions in the selected range.";
+    introEl.classList.toggle("hidden", !introEl.textContent);
+
+    const wrap = $("refunds-rows");
+    wrap.innerHTML = "";
+    if (refunds.length === 0) return;
+
+    const table = document.createElement("table");
+    table.className = "mini-table";
+    table.innerHTML =
+      "<thead><tr>" +
+      "<th>Date</th><th>Description</th><th>Amount</th><th>Account</th>" +
+      "<th class=\"action-col\"></th>" +
+      "</tr></thead>";
+    const tbody = document.createElement("tbody");
+    for (const r of refunds) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
+        `<td>${escapeHtml(String(r.description ?? ""))}</td>` +
+        `<td class="amount">${fmtSGD.format(r.amount)}</td>` +
+        `<td>${escapeHtml(String(r.account ?? ""))}</td>`;
+      const actionCell = document.createElement("td");
+      actionCell.className = "action-col";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "unsuppress-btn reinclude-btn";
+      btn.title = "Include this refund in the dashboard";
+      btn.setAttribute("aria-label", "Include this refund in the dashboard");
+      btn.textContent = "+";
+      btn.addEventListener("click", () => reincludeRefund(r._idx));
+      actionCell.appendChild(btn);
+      tr.appendChild(actionCell);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+
+  function reincludeRefund(idx) {
+    if (typeof idx !== "number") return;
+    const target = state.session.rows[idx];
+    if (!target || target._refIncluded) return;
+    target._refIncluded = true;
+    state.reincludedRef.add(idx);
+    saveSession();
+    renderForDateRange();
   }
 
   function renderUnmappedPanel(unmapped) {
@@ -1049,19 +1118,17 @@
       if (state.scoped) renderTable(state.scoped.dashboardRows);
       saveSession();
     });
-    $("toggle-matched").addEventListener("click", () => {
-      state.tableFilter.matched = !state.tableFilter.matched;
+    $("toggle-matched").addEventListener("change", () => {
+      state.tableFilter.matched = $("toggle-matched").checked;
       syncMatchedColumn();
       saveSession();
     });
   }
 
-  // Show/hide the Matched pattern column and keep the toggle's label in sync.
+  // Show/hide the Matched pattern column and keep the checkbox in sync.
   function syncMatchedColumn() {
     const on = !!state.tableFilter.matched;
-    $("toggle-matched").textContent = on
-      ? "Hide matched pattern"
-      : "Show matched pattern";
+    $("toggle-matched").checked = on;
     if (!state.table) return;
     if (on) state.table.showColumn("matched_pattern");
     else state.table.hideColumn("matched_pattern");
@@ -1240,6 +1307,7 @@
         unsuppressed_dup_idx: [...state.unsuppressedDup],
         reincluded_excl_idx: [...state.reincludedExcl],
         excluded_row_idx: [...state.manualExcl],
+        reincluded_refund_idx: [...state.reincludedRef],
       });
       const { inserted, updated, total_in_db } = res;
       const parts = [];

@@ -315,9 +315,13 @@ async def api_compile(
     )
     duplicates_count = int(df["duplicate"].sum())
 
-    before = len(df)
-    df = df[df["amount"] > 0].reset_index(drop=True)
-    dropped_negatives = before - len(df)
+    # Refunds/credits (amount <= 0) are kept but flagged: hidden from the
+    # dashboard, listed in the Refunds panel, re-includable per row like
+    # excluded transactions. dropped_negatives keeps its name for the
+    # metric tile ("Refunds dropped").
+    df["refund"] = df["amount"] <= 0
+    dropped_negatives = int(df["refund"].sum())
+    df = df.reset_index(drop=True)
 
     try:
         mapping = load_mapping(MAPPING_PATH)
@@ -397,9 +401,10 @@ class CommitBody(BaseModel):
     start_date: date
     end_date: date
     # Row indices (into the compile response's rows array) that the client
-    # has overridden via the ⟲ buttons — hidden by default, but committed.
+    # has overridden via the ⟲/+ buttons — hidden by default, but committed.
     unsuppressed_dup_idx: list[int] = []
     reincluded_excl_idx: list[int] = []
+    reincluded_refund_idx: list[int] = []
     # Rows the user excluded by hand via the × button — visible by default,
     # but hidden and therefore not committed.
     excluded_row_idx: list[int] = []
@@ -422,6 +427,7 @@ def _commit_view(
     unsuppressed_dup_idx: list[int],
     reincluded_excl_idx: list[int],
     excluded_row_idx: list[int] | None = None,
+    reincluded_refund_idx: list[int] | None = None,
 ) -> pd.DataFrame:
     """Rebuild the exact set of rows the user sees in the Categorised
     Transactions table, honouring their per-row ⟲/× overrides. Row indices
@@ -441,6 +447,7 @@ def _commit_view(
     unsup = set(unsuppressed_dup_idx)
     reinc = set(reincluded_excl_idx)
     manual = set(excluded_row_idx or [])
+    reinc_ref = set(reincluded_refund_idx or [])
 
     hidden_dup = df_ranged["duplicate"] & ~df_ranged.index.isin(unsup)
     hidden_excl = (
@@ -448,9 +455,17 @@ def _commit_view(
         if excluded else pd.Series(False, index=df_ranged.index)
     )
     hidden_manual = df_ranged.index.isin(manual)
-    return df_ranged[~hidden_dup & ~hidden_excl & ~hidden_manual].reset_index(
-        drop=True
-    )
+    hidden_refund = _refund_col(df_ranged) & ~df_ranged.index.isin(reinc_ref)
+    return df_ranged[
+        ~hidden_dup & ~hidden_excl & ~hidden_manual & ~hidden_refund
+    ].reset_index(drop=True)
+
+
+def _refund_col(df: pd.DataFrame) -> pd.Series:
+    """Refund flag column; absent on pre-refund-feature sessions/fixtures."""
+    if "refund" in df.columns:
+        return df["refund"].fillna(False).astype(bool)
+    return pd.Series(False, index=df.index)
 
 
 def _scoped_views(state: dict, start_date: date, end_date: date) -> dict:
@@ -459,7 +474,9 @@ def _scoped_views(state: dict, start_date: date, end_date: date) -> dict:
         df["date"] <= pd.Timestamp(end_date)
     )
     df_dated = df[mask].reset_index(drop=True)
-    df_full = df_dated[~df_dated["duplicate"]].reset_index(drop=True)
+    df_full = df_dated[
+        ~df_dated["duplicate"] & ~_refund_col(df_dated)
+    ].reset_index(drop=True)
 
     try:
         _, excluded = load_categories()
@@ -685,7 +702,7 @@ def api_guess(session_id: str):
         return {"guesses": {}}
 
     df: pd.DataFrame = state["df"]
-    unmapped = df[df["category"] == UNCATEGORISED]
+    unmapped = df[(df["category"] == UNCATEGORISED) & ~_refund_col(df)]
 
     guesses: dict[int, dict] = {}
     cache: dict[str, dict | None] = {}  # per distinct description
@@ -773,7 +790,7 @@ def api_db_commit(session_id: str, body: CommitBody):
     view = _commit_view(
         state, body.start_date, body.end_date,
         body.unsuppressed_dup_idx, body.reincluded_excl_idx,
-        body.excluded_row_idx,
+        body.excluded_row_idx, body.reincluded_refund_idx,
     )
     if view.empty:
         return {"inserted": 0, "updated": 0, "total_in_db": db.upsert([])["total_in_db"]}

@@ -1,12 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Spending Review · Abicus{% endblock %}
 {% block page_title %}Spending Review{% endblock %}
-{% block breadcrumb %}Tools / My Outflows{% endblock %}
-
 {% block page_actions %}
 <a href="/outflows/breakdown" class="btn">Monthly breakdown</a>
-<a href="/outflows/history" class="btn">Edit history</a>
-<a href="/outflows/mapping" class="btn">Edit mapping</a>
+<a href="/outflows/history" class="btn">Transaction History Table</a>
+<a href="/outflows/mapping" class="btn">Mapping Table</a>
 {% endblock %}
 
 {% block head %}
@@ -121,9 +119,9 @@
         Search
         <input type="search" id="filter-search" placeholder="Filter descriptions…" autocomplete="off">
       </label>
-      <button type="button" id="toggle-matched" class="toggle-matched">
-        Show matched pattern
-      </button>
+      <label class="check-pill toggle-matched-pill">
+        <input type="checkbox" id="toggle-matched"> Show matched pattern
+      </label>
     </div>
     <div id="transactions-table"></div>
   </section>
@@ -144,6 +142,12 @@
     <summary id="duplicates-summary">Duplicate transactions</summary>
     <p class="panel-intro" id="duplicates-intro"></p>
     <div id="duplicates-rows" class="mini-table-wrap"></div>
+  </details>
+
+  <details id="refunds-panel" class="panel">
+    <summary id="refunds-summary">Refund transactions</summary>
+    <p class="panel-intro" id="refunds-intro"></p>
+    <div id="refunds-rows" class="mini-table-wrap"></div>
   </details>
 
   <section class="card">
@@ -175,9 +179,7 @@
           </button>
           <div class="caption">
             Upserts all rows in the current Categorised Transactions view into
-            <code>data/transactions.db</code> — the source of truth for the
-            Monthly Breakdown page. Safe to re-commit; matching rows are
-            updated in place.
+            <code>data/transactions.db</code>.
           </div>
         </div>
         <div class="download-tile">
@@ -185,8 +187,7 @@
             Clear database
           </button>
           <div class="caption">
-            Wipes every row from <code>data/transactions.db</code> so you can
-            start over. Destructive — asks for confirmation first.
+            Wipes every row from <code>data/transactions.db</code>.
           </div>
         </div>
       </div>
@@ -197,8 +198,7 @@
             Download unmapped (Excel)
           </button>
           <div class="caption">
-            Unmapped transactions only. Standalone snapshot —
-            does not modify <code>transaction_history.xlsx</code>.
+            Unmapped transactions only.
           </div>
         </div>
         <div class="download-tile">
@@ -207,8 +207,7 @@
           </button>
           <div class="caption">
             Appends new unmapped rows to
-            <code>config/transaction_history.xlsx</code>
-            (deduped on description).
+            <code>config/transaction_history.xlsx</code>.
           </div>
         </div>
       </div>
