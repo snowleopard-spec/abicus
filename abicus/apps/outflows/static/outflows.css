@@ -350,16 +350,17 @@ code {
   color: #2C4F7A;
 }
 
-/* × (exclude a categorised row) — clearly darker brown than the default */
+/* × (exclude a categorised row) — default outline, brown fill slightly
+   darker than the surrounding beige tones */
 .row-excl-btn {
-  color: #4A3826;
-  border-color: #74604A;
+  background: #AB9D87;
+  color: #3D3229;
   font-weight: 600;
 }
 .row-excl-btn:hover {
-  color: #332617;
-  border-color: #4A3826;
-  background: var(--bg-hover);
+  background: #998A73;
+  color: #2A2018;
+  border-color: var(--border);
 }
 
 /* Highlight-to-map: selecting text in a description cell shows a raised,
