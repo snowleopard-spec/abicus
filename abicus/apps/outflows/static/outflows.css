@@ -350,15 +350,15 @@ code {
   color: #2C4F7A;
 }
 
-/* × (exclude a categorised row) — default outline, brown fill slightly
-   darker than the surrounding beige tones */
+/* × (exclude a categorised row) — default outline, filled with the same
+   tone as the table header row (var(--surface-alt)) */
 .row-excl-btn {
-  background: #AB9D87;
+  background: var(--surface-alt);
   color: #3D3229;
   font-weight: 600;
 }
 .row-excl-btn:hover {
-  background: #998A73;
+  background: var(--bg-active);
   color: #2A2018;
   border-color: var(--border);
 }
