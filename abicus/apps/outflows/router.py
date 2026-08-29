@@ -187,6 +187,47 @@ def api_config():
     }
 
 
+@api_router.post("/detect")
+async def api_detect(file: UploadFile = File(...)):
+    """Auto-detect a statement's format by try-parsing it against every
+    registered parser — the parsers themselves are the format fingerprints.
+    Returns the account to pre-select when detection is unambiguous:
+
+        format:     the single format that parsed, else null
+        account:    the single accounts.yaml account for that format, else null
+        candidates: every format that parsed (empty = not recognised)
+    """
+    file_bytes = await file.read()
+
+    candidates = []
+    for format_name, parser in PARSERS.items():
+        try:
+            parser(file_bytes, file.filename)
+        except Exception:
+            # Any failure — wrong headers, unreadable bytes, empty file —
+            # just means "not this format" for detection purposes.
+            continue
+        candidates.append(format_name)
+
+    detected = candidates[0] if len(candidates) == 1 else None
+
+    account = None
+    if detected is not None:
+        try:
+            account_map = load_accounts(valid_formats=set(PARSERS.keys()))
+        except (FileNotFoundError, ValueError):
+            account_map = {}
+        matches = [
+            name for name, info in account_map.items()
+            if info["format"] == detected
+        ]
+        # Only auto-pick when the format maps to exactly one account.
+        if len(matches) == 1:
+            account = matches[0]
+
+    return {"format": detected, "account": account, "candidates": candidates}
+
+
 @api_router.post("/compile")
 async def api_compile(
     files: list[UploadFile] = File(...),

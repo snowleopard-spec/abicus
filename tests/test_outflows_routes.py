@@ -206,6 +206,71 @@ def test_compile_rejects_label_not_allowed_for_account(app, monkeypatch):
     assert "Unknown account" in r.json()["detail"]
 
 
+def test_detect_endpoint(app, monkeypatch):
+    """/detect try-parses against every registered parser and only commits
+    to an answer when exactly one format (and one account) matches."""
+    from abicus.apps.outflows import router as outflows
+
+    def ok(file_bytes, filename):
+        return "parsed"
+
+    def fail(file_bytes, filename):
+        raise ValueError("wrong headers")
+
+    def crash(file_bytes, filename):
+        raise RuntimeError("unreadable bytes")
+
+    accounts = {
+        "UOB": {"format": "Format C", "labels": ["UOB One Card"]},
+        "Amex": {"format": "Format A", "labels": ["Amex PPS"]},
+    }
+    monkeypatch.setattr(
+        outflows, "load_accounts", lambda valid_formats=None: accounts
+    )
+    c = TestClient(app)
+    post = lambda: c.post(
+        "/api/outflows/detect",
+        files={"file": ("stmt.csv", b"dummy", "text/csv")},
+    )
+
+    # Exactly one parser accepts → format + account.
+    monkeypatch.setattr(
+        outflows, "PARSERS",
+        {"Format A": fail, "Format C": ok, "Format D": crash},
+    )
+    body = post().json()
+    assert body == {
+        "format": "Format C", "account": "UOB", "candidates": ["Format C"],
+    }
+
+    # Nothing accepts (new/unknown format) → all null.
+    monkeypatch.setattr(
+        outflows, "PARSERS", {"Format A": fail, "Format C": crash}
+    )
+    body = post().json()
+    assert body == {"format": None, "account": None, "candidates": []}
+
+    # Two accept → ambiguous, no auto-pick.
+    monkeypatch.setattr(
+        outflows, "PARSERS", {"Format A": ok, "Format C": ok}
+    )
+    body = post().json()
+    assert body["format"] is None and body["account"] is None
+    assert body["candidates"] == ["Format A", "Format C"]
+
+    # One format, but two accounts share it → format reported, account null.
+    monkeypatch.setattr(outflows, "PARSERS", {"Format C": ok})
+    monkeypatch.setattr(
+        outflows, "load_accounts",
+        lambda valid_formats=None: {
+            "UOB": {"format": "Format C", "labels": ["UOB One Card"]},
+            "UOB2": {"format": "Format C", "labels": ["UOB Black Card"]},
+        },
+    )
+    body = post().json()
+    assert body["format"] == "Format C" and body["account"] is None
+
+
 def test_db_commit_honours_manual_exclusions(app, monkeypatch):
     """Rows excluded by hand via the × button (excluded_row_idx) are
     dropped from the committed view."""

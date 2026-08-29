@@ -120,6 +120,30 @@ code {
   color: var(--text-primary);
   min-width: 9rem;
 }
+.detect-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.detect-pending {
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
+}
+.detect-ok {
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid var(--success-border);
+}
+.detect-warn {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-border);
+}
 .file-row .remove-btn {
   background: transparent;
   border: 0;

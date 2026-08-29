@@ -156,9 +156,86 @@
     const account = last ? last.account : state.config.accounts[0].name;
     const label = last ? last.label : labelsForAccount(account)[0];
     for (const file of fileList) {
-      state.files.push({ file, id: `f${state.nextFileId++}`, account, label });
+      const entry = {
+        file, id: `f${state.nextFileId++}`, account, label,
+        detect: "pending", detectInfo: "",
+      };
+      state.files.push(entry);
+      detectFormat(entry);
     }
     renderFileList();
+  }
+
+  // Fire-and-forget format auto-detection for one file row. The dropdown
+  // keeps its default until the server answers; on an unambiguous match it
+  // snaps to the detected account.
+  async function detectFormat(entry) {
+    const form = new FormData();
+    form.append("file", entry.file, entry.file.name);
+    let resp;
+    try {
+      resp = await api.postForm("/api/outflows/detect", form);
+    } catch {
+      entry.detect = null; // detection failed; behave like before the feature
+      if (state.files.includes(entry)) renderFileList();
+      return;
+    }
+    if (!state.files.includes(entry)) return; // row removed meanwhile
+
+    if (resp.account) {
+      entry.account = resp.account;
+      const allowed = labelsForAccount(entry.account);
+      if (!allowed.includes(entry.label)) entry.label = allowed[0] || "";
+      entry.detect = "ok";
+      entry.detectInfo = resp.account;
+    } else if (resp.format) {
+      // Format recognised but it maps to several accounts — user picks.
+      entry.detect = "pick";
+      entry.detectInfo = resp.format;
+    } else if ((resp.candidates || []).length > 1) {
+      entry.detect = "ambiguous";
+      entry.detectInfo = resp.candidates.join(", ");
+    } else {
+      entry.detect = "none";
+      entry.detectInfo = "";
+    }
+    renderFileList();
+  }
+
+  // Small status marker for a file row's auto-detection outcome.
+  function detectBadge(f) {
+    if (!f.detect) return null;
+    const span = document.createElement("span");
+    span.classList.add("detect-badge");
+    switch (f.detect) {
+      case "pending":
+        span.classList.add("detect-pending");
+        span.textContent = "⋯ detecting";
+        break;
+      case "ok":
+        span.classList.add("detect-ok");
+        span.textContent = `✓ ${f.detectInfo}`;
+        span.title = "Format auto-detected";
+        break;
+      case "pick":
+        span.classList.add("detect-warn");
+        span.textContent = `✓ ${f.detectInfo} — pick account`;
+        span.title = "Format detected, but several accounts use it — pick one";
+        break;
+      case "ambiguous":
+        span.classList.add("detect-warn");
+        span.textContent = "~ ambiguous";
+        span.title = `File parses as more than one format (${f.detectInfo}) — select manually`;
+        break;
+      case "none":
+        span.classList.add("detect-warn");
+        span.textContent = "? not recognised";
+        span.title = "No parser recognised this file — select the account manually";
+        break;
+      default:
+        return null;
+    }
+    return span;
   }
 
   function removeFile(id) {
@@ -185,6 +262,8 @@
       const name = document.createElement("div");
       name.className = "file-row-name";
       name.textContent = `📄 ${f.file.name}`;
+      const badge = detectBadge(f);
+      if (badge) name.appendChild(badge);
       row.appendChild(name);
 
       const accountSelect = document.createElement("select");
@@ -213,6 +292,12 @@
 
       accountSelect.addEventListener("change", () => {
         f.account = accountSelect.value;
+        // A manual pick supersedes whatever detection concluded.
+        if (f.detect && f.detect !== "pending") {
+          f.detect = null;
+          const old = name.querySelector(".detect-badge");
+          if (old) old.remove();
+        }
         fillLabels();
       });
       labelSelect.addEventListener("change", () => { f.label = labelSelect.value; });
