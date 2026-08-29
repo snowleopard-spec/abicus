@@ -321,11 +321,44 @@ code {
   color: var(--text-primary);
   background: var(--surface-alt);
 }
-/* +H (add to transaction history) — same circle, two-character label */
+/* + (re-include an excluded transaction) — light green from the palette */
+.reinclude-btn {
+  background: var(--success-soft);
+  border-color: var(--success-border);
+  color: var(--success);
+  font-weight: 600;
+}
+.reinclude-btn:hover {
+  background: #DCE9CE;
+  border-color: var(--success);
+  color: var(--success);
+}
+
+/* +H (add to transaction history) — same circle, two-character label,
+   light orange (tints of --rust) */
 .addhist-btn {
   font-size: 0.62rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+  background: #FAE8D9;
+  border-color: #DCA980;
+  color: #B4642E;
+}
+.addhist-btn:hover {
+  background: #F5DCC5;
+  border-color: var(--rust);
+  color: #9A5527;
+}
+
+/* × (exclude a categorised row) — slightly darker brown than the default */
+.row-excl-btn {
+  color: var(--accent-hover);
+  border-color: var(--border-strong);
+}
+.row-excl-btn:hover {
+  color: #5C4B39;
+  border-color: var(--accent-hover);
+  background: var(--bg-hover);
 }
 
 /* Highlight-to-map: selecting text in a description cell shows a raised,

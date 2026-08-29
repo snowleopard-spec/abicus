@@ -452,7 +452,7 @@
         "their category is flagged with ,exclude in categories.txt, or " +
         "because they were excluded by hand with the × button on the " +
         "Categorised Transactions table. They are still included in the " +
-        "downloads. Click ⟲ to include a row in the dashboard anyway.";
+        "downloads. Click + to include a row in the dashboard anyway.";
     }
     renderExcludedPanel(excludedRows, excludedIntro);
 
@@ -738,10 +738,10 @@
       actionCell.className = "action-col";
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "unsuppress-btn";
+      btn.className = "unsuppress-btn reinclude-btn";
       btn.title = "Include this row in the dashboard";
       btn.setAttribute("aria-label", "Include this excluded transaction in the dashboard");
-      btn.textContent = "⟲";
+      btn.textContent = "+";
       btn.addEventListener("click", () => {
         if (state.manualExcl.has(r._idx)) unexcludeRow(r._idx);
         else reincludeExcluded(r._idx);
