@@ -6,6 +6,19 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Fixes: highlight-to-map and category dropdown.*
+
+- The category dropdown (from `+H` or a highlight) is now scrollable — the
+  close-on-scroll guard was also catching scrolls *inside* the menu and
+  dismissing it. It also opens on whichever side of the anchor has more
+  room and clamps its height to the available space, so the full category
+  list is always reachable.
+- The highlight bubble no longer includes the trailing space the browser's
+  word-snap selection adds: on mouse-lift the selection is shrunk to its
+  trimmed edges, so the bubble shows exactly the substring that becomes
+  the rule. (Stored rules were never affected — the text was always
+  trimmed, and matching is whitespace-insensitive.)
+
 *Fix: whitespace-insensitive matching.* Statement exports pad description
 fields with space runs and newlines (e.g. UOB:
 `EVERYDAY APP             SINGAPORE    SG` + a `Ref No:` line) that HTML
