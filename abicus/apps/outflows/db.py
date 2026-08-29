@@ -116,6 +116,22 @@ def clear() -> dict:
     return {"deleted": int(n)}
 
 
+def load_description_categories() -> list[tuple[str, str]]:
+    """Distinct (description, category) pairs for the guess feature.
+    Where a description was committed under more than one category over
+    time, the most recent row wins (SQLite bare-column-with-MAX idiom)."""
+    if not DB_PATH.exists():
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT description, category, MAX(date)
+               FROM transactions
+               WHERE category != 'Uncategorised'
+               GROUP BY description"""
+        ).fetchall()
+    return [(str(d), str(c)) for d, c, _ in rows]
+
+
 def load_monthly_breakdown(selected_months: list[str] | None = None) -> dict:
     """Aggregate the DB into per-category, per-month totals for the
     breakdown page.

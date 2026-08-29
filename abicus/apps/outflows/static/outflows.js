@@ -14,6 +14,7 @@
     unsuppressedDup: new Set(),
     reincludedExcl: new Set(),
     manualExcl: new Set(),
+    guesses: {},                                   // row _idx → {category, matched, score}
   };
 
   // sessionStorage keys — cleared on tab close, per-tab so nothing leaks
@@ -118,6 +119,23 @@
       "history edits made since.";
     show(notice);
     renderResults(/* preserveDateRange */ true);
+    fetchGuesses();
+  }
+
+  // Ask the server for best-guess categories for the unmapped rows.
+  // Fire-and-forget: pills appear in the panel when the answer lands.
+  async function fetchGuesses() {
+    if (!state.session) return;
+    const sid = state.session.session_id;
+    let resp;
+    try {
+      resp = await api.postJson(`/api/outflows/guess/${sid}`, {});
+    } catch {
+      return; // guessing is best-effort; the panel just shows no pills
+    }
+    if (!state.session || state.session.session_id !== sid) return;
+    state.guesses = resp.guesses || {};
+    renderForDateRange();
   }
 
   // Give every row a stable id so the un-suppress action can flip a
@@ -338,10 +356,12 @@
       state.unsuppressedDup = new Set();
       state.reincludedExcl = new Set();
       state.manualExcl = new Set();
+      state.guesses = {};
       hide($("restored-notice"));
       hide(statusEl);
       renderResults();
       saveSession();
+      fetchGuesses();
     } catch (err) {
       hide(statusEl);
       errEl.textContent = String(err.message || err);
@@ -554,7 +574,8 @@
     table.className = "mini-table";
     table.innerHTML =
       "<thead><tr>" +
-      "<th>Date</th><th>Description</th><th>Amount</th><th>Account</th>" +
+      "<th>Date</th><th>Description</th><th>Amount</th><th>Guess</th>" +
+      "<th>Account</th>" +
       "<th class=\"action-col\"></th>" +
       "</tr></thead>";
     const tbody = document.createElement("tbody");
@@ -563,8 +584,27 @@
       tr.innerHTML =
         `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
         `<td class="desc-cell">${escapeHtml(String(r.description ?? ""))}</td>` +
-        `<td class="amount">${fmtSGD.format(r.amount)}</td>` +
-        `<td>${escapeHtml(String(r.account ?? ""))}</td>`;
+        `<td class="amount">${fmtSGD.format(r.amount)}</td>`;
+
+      const guessCell = document.createElement("td");
+      const g = state.guesses[r._idx];
+      if (g) {
+        const pill = document.createElement("button");
+        pill.type = "button";
+        pill.className = "guess-pill";
+        pill.textContent = `≈ ${g.category}`;
+        pill.title =
+          `Matched "${g.matched}" (score ${g.score}) — ` +
+          `click to add to transaction history as ${g.category}`;
+        pill.addEventListener("click", () => addToHistory(r._idx, g.category));
+        guessCell.appendChild(pill);
+      }
+      tr.appendChild(guessCell);
+
+      const acctCell = document.createElement("td");
+      acctCell.textContent = String(r.account ?? "");
+      tr.appendChild(acctCell);
+
       const actionCell = document.createElement("td");
       actionCell.className = "action-col";
       const btn = document.createElement("button");
@@ -754,6 +794,7 @@
     clearSelectionBubbles();
     saveSession();
     renderForDateRange();
+    fetchGuesses(); // rows recategorised by the new rule leave the panel
   }
 
   async function addToHistory(rowIdx, category) {
@@ -784,6 +825,7 @@
     );
     saveSession();
     renderForDateRange();
+    fetchGuesses(); // the new history entry may improve remaining guesses
   }
 
   function renderExcludedPanel(excludedRows, intro) {

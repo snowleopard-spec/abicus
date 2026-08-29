@@ -123,6 +123,25 @@ code {
    option text each row happens to show. */
 .file-row select:first-of-type { width: 8rem; }   /* account */
 .file-row select:last-of-type { width: 14rem; }   /* label */
+/* Category guess pill in the Unmapped panel — click to accept */
+.guess-pill {
+  display: inline-block;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid #9FB4D0;
+  background: #E3EBF5;
+  color: #3D6491;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.guess-pill:hover {
+  background: #D4E0F0;
+  border-color: #6E8CB4;
+  color: #2C4F7A;
+}
+
 .detect-badge {
   display: inline-block;
   margin-left: 0.5rem;

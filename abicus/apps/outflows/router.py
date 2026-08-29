@@ -21,6 +21,7 @@ from abicus.apps.outflows.build_mapping import (
     save_mapping_table,
 )
 from abicus.apps.outflows.categories import load_categories
+from abicus.apps.outflows.guess import best_guess, build_corpus, load_guess_config
 from abicus.apps.outflows.categorise import UNCATEGORISED, categorise_dataframe, load_mapping
 from abicus.apps.outflows.html_export import build_html
 from abicus.apps.outflows.transaction_history import (
@@ -649,6 +650,52 @@ def api_mapping_add_rule(session_id: str, body: MappingAddRuleBody):
         "updated_idx": [int(i) for i in df.index[mask]],
         "warnings": warnings,
     }
+
+
+@api_router.post("/guess/{session_id}")
+def api_guess(session_id: str):
+    """Best-guess categories for the session's unmapped rows, scored with
+    guess.py's free-deletion distance against the description→category
+    pairs in transactions.db and transaction_history.xlsx. Returns
+    {"guesses": {row_idx: {category, matched, score}}} — rows with no
+    guess clearing the threshold are simply absent."""
+    state = _get_session(session_id)
+
+    try:
+        cfg = load_guess_config()
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=f"guess.yaml: {e}")
+
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError):
+        valid_cats = None
+
+    try:
+        history_map, _ = load_history_mapping(HISTORY_PATH, valid_categories=valid_cats)
+    except ValueError:
+        history_map = {}
+
+    corpus = build_corpus(
+        db.load_description_categories(),
+        [(desc, cat) for desc, cat in history_map.items()],
+        valid_categories=valid_cats,
+    )
+    if not corpus:
+        return {"guesses": {}}
+
+    df: pd.DataFrame = state["df"]
+    unmapped = df[df["category"] == UNCATEGORISED]
+
+    guesses: dict[int, dict] = {}
+    cache: dict[str, dict | None] = {}  # per distinct description
+    for idx, desc in unmapped["description"].items():
+        key = str(desc)
+        if key not in cache:
+            cache[key] = best_guess(key, corpus, cfg)
+        if cache[key] is not None:
+            guesses[int(idx)] = cache[key]
+    return {"guesses": guesses}
 
 
 class HistoryCategoriseBody(BaseModel):
