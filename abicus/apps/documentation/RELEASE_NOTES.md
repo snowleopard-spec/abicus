@@ -4,6 +4,40 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ---
 
+## Unreleased
+
+*Outflows polish after v2.1.2:*
+
+- The explainer paragraphs on the *Unmapped transactions* and *Excluded
+  transactions* panels are removed — tables start right under the summary
+  line. The empty-state messages ("Every transaction was mapped. Nice.")
+  remain.
+- The two per-file dropdowns on upload have fixed widths (account 8rem,
+  label 14rem) so they align as columns across file rows.
+- `accounts.yaml` reworked (local config, not in git): account names are
+  now bank-level groupings — Amex, OCBC, UOB, HSBC, Revolut, Manual — each
+  carrying an explicit `labels:` list of its cards.
+
+*Documentation:*
+
+- `apps/documentation/` started: this release-notes file, plus
+  `RAPIDFUZZ_SPEC.md` — a ready-to-run spec for swapping the planned
+  description-guess engine from pure-Python LCS to rapidfuzz (C++ binary
+  wheels), including background on how compiled extensions integrate into
+  a Python project. Not scheduled; triggers when the corpus outgrows pure
+  Python.
+
+*In design (not yet built):*
+
+- **Category guesser for unmapped rows** — a free-deletion edit distance
+  (substitutions cost 1, deletions from the query free — equivalently
+  `len(candidate) − LCS`) scored against the description → category pairs
+  in `transactions.db` and `transaction_history.xlsx`; best guess shown as
+  a clickable blue pill after Amount, accepting it files the row to
+  history via the existing `+H` endpoint.
+
+---
+
 ## v2.1.2 — Statement format auto-detection (2026-08-29)
 
 *Outflows.* Dropping a file onto the upload zone now auto-detects its
