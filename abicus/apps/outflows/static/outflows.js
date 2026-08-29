@@ -526,18 +526,11 @@
         (excluded.has(r.category) && !r._reincluded) ||
         state.manualExcl.has(r._idx),
     );
-    let excludedIntro;
+    let excludedIntro = "";
     if (excludedRows.length === 0) {
       excludedIntro = excluded.size
         ? `No transactions matched any excluded categories (${[...excluded].sort().join(", ")}), and none were excluded by hand.`
         : "No categories are flagged as excluded in categories.txt, and no transactions were excluded by hand.";
-    } else {
-      excludedIntro =
-        "These transactions are hidden from the dashboard view because " +
-        "their category is flagged with ,exclude in categories.txt, or " +
-        "because they were excluded by hand with the × button on the " +
-        "Categorised Transactions table. They are still included in the " +
-        "downloads. Click + to include a row in the dashboard anyway.";
     }
     renderExcludedPanel(excludedRows, excludedIntro);
 
@@ -547,12 +540,11 @@
 
   function renderUnmappedPanel(unmapped) {
     $("unmapped-summary").textContent = `Unmapped transactions (${unmapped.length})`;
-    $("unmapped-intro").textContent = unmapped.length
-      ? "These descriptions did not match any pattern in your mapping table. " +
-        "Click +H to pick a category and save the row to your transaction " +
-        "history, or highlight part of a description to turn the highlighted " +
-        "text into a new mapping rule."
+    const unmappedIntro = $("unmapped-intro");
+    unmappedIntro.textContent = unmapped.length
+      ? ""
       : "Every transaction was mapped. Nice.";
+    unmappedIntro.classList.toggle("hidden", !unmappedIntro.textContent);
 
     const wrap = $("unmapped-rows");
     wrap.innerHTML = "";
@@ -796,7 +788,9 @@
 
   function renderExcludedPanel(excludedRows, intro) {
     $("excluded-summary").textContent = `Excluded transactions (${excludedRows.length})`;
-    $("excluded-intro").textContent = intro;
+    const introEl = $("excluded-intro");
+    introEl.textContent = intro;
+    introEl.classList.toggle("hidden", !intro);
 
     const wrap = $("excluded-rows");
     wrap.innerHTML = "";
