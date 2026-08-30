@@ -6,6 +6,24 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*New: saved states.* The whole working session can be saved and reopened
+later — across app restarts.
+
+- **Save state** (next to the date range) writes one JSON document to
+  `data/states/<name>.json`: the compiled rows (every panel — Categorised,
+  Unmapped, Excluded, Duplicates, Refunds — is derived from them, so
+  nothing else needs storing), the date range, table filters, all per-row
+  ⟲/+/× overrides, and provenance (saved-at, app version, source
+  filenames, schema version).
+- **Saved states** picker on the upload card lists states newest-first,
+  with Load and Delete. Loading rebuilds a fresh server session and puts
+  everything back exactly as saved.
+- Loaded states are **frozen as of the save** — mapping/history changes
+  made since do not silently alter them. A *Re-categorise with current
+  rules* button applies today's rules on demand.
+- `data/states/` sits under the gitignored per-app data directory:
+  state files contain full transaction data and can never reach git.
+
 *Fixes: highlight-to-map and category dropdown.*
 
 - The category dropdown (from `+H` or a highlight) is now scrollable — the
