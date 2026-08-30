@@ -6,6 +6,16 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*New: app tabs replace the sidebar (shell-wide).* The sidebar is gone;
+a slim topbar carries the Abicus brand and an app-level pill bar —
+Outflows · Assets · Claims · Mortgage — in the same "option 4" style,
+centred so the brand never shifts it. The pill styling is promoted into
+the shell as shared `.pill-tabs` classes used by both tab levels, so the
+app bar and the outflows page bar are one implementation. The active app
+pill is driven by `body[data-active]` and fills with each app's own
+accent colour. Navigation is now fully nested: top level picks the app,
+second level (on Outflows) picks the page.
+
 *New: segmented tab bar.* The four outflows pages — Spending Review,
 Monthly Breakdown, Transaction History Table, Mapping Table — are now
 navigated by a pill tab bar in the page header ("option 4" of the tab
