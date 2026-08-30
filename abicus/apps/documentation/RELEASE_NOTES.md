@@ -6,6 +6,17 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*New: segmented tab bar.* The four outflows pages — Spending Review,
+Monthly Breakdown, Transaction History Table, Mapping Table — are now
+navigated by a pill tab bar in the page header ("option 4" of the tab
+reference in `icons/`): a stadium container with the active page as a
+solid filled pill (accent brown), thin dividers between inactive tabs.
+Built as one shared `_tabs.html` partial included by all four templates;
+it replaces the old back/edit button links, while page-specific actions
+(Save changes, Export PDF) remain beside it. The bar is absolutely
+centred in the header so those buttons never shift its position between
+pages.
+
 *New: saved states.* The whole working session can be saved and reopened
 later — across app restarts.
 
