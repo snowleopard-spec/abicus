@@ -234,7 +234,14 @@ code {
 .date-controls .arrow { color: var(--text-muted); font-size: 1.1rem; }
 
 /* ---------- Page tabs ("option 4": stadium bar, filled active pill) ---- */
+/* Anchored to the centre of the header so per-page action buttons
+   (Save changes, Export PDF) never shift the bar's position. */
+body[data-active="outflows"] .page-header { position: relative; }
 .ofx-tabs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: inline-flex;
   align-items: stretch;
   background: var(--bg-card);
@@ -245,8 +252,8 @@ code {
 .ofx-tab {
   display: inline-flex;
   align-items: center;
-  padding: 0.55rem 1.15rem;
-  font-size: 0.9rem;
+  padding: 0.6rem 1.3rem;
+  font-size: 1.02rem;
   color: var(--text-secondary);
   text-decoration: none;
   white-space: nowrap;
