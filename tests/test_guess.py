@@ -1,6 +1,6 @@
 """Unit tests for the category-guess engine (outflows/guess.py) and its
 API endpoint. The scoring assertions double as the contract for a future
-rapidfuzz swap (see apps/documentation/RAPIDFUZZ_SPEC.md) — they must pass
+rapidfuzz swap (see abicus/documentation/RAPIDFUZZ_SPEC.md) — they must pass
 unchanged if the engine is replaced."""
 
 import pandas as pd

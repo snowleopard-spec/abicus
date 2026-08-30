@@ -115,7 +115,7 @@ still exclude refunds. The "Refunds dropped" metric is unchanged.
 
 *Documentation:*
 
-- `apps/documentation/` started: this release-notes file, plus
+- `abicus/documentation/` started: this release-notes file, plus
   `RAPIDFUZZ_SPEC.md` — a ready-to-run spec for swapping the planned
   description-guess engine from pure-Python LCS to rapidfuzz (C++ binary
   wheels), including background on how compiled extensions integrate into
