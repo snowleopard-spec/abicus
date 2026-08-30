@@ -1,5 +1,5 @@
 /* ---------- Loan theme — editorial navy / Iowan ---------- */
-body[data-active="loan"] {
+body[data-active="mortgage"] {
   --bg-app: #F4F2EC;
   --bg-sidebar: #FBFAF6;
   --bg-card: #FBFAF6;

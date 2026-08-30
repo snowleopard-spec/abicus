@@ -3,7 +3,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from abicus.apps.loan.simulate import Loan
+from abicus.apps.mortgage.simulate import Loan
 
 CONFIG_DIR = Path(__file__).resolve().parent / "config"
 LOAN_PATH = CONFIG_DIR / "loan.json"

@@ -6,6 +6,17 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Naming locked in: Outflows · Assets · Claims · Mortgage.* The four app
+names are now canonical everywhere — tabs, page titles, routes, code and
+docs. The `loan` app is renamed `mortgage` end to end: directory
+(`apps/mortgage/`), routes (`/mortgage`, `/api/mortgage`), template
+prefix, `data-active` key, static files (`mortgage.css/js`), test file,
+and user-facing labels ("Edit mortgage"). Domain vocabulary inside the
+simulator (the `Loan` class, `loan.json` config, `remaining_loan` API
+field) deliberately keeps its financial meaning — a mortgage is a loan;
+only the app identity was renamed. The frozen build spec and the legacy
+migration script's source references are untouched as historical record.
+
 *New: app tabs replace the sidebar (shell-wide).* The sidebar is gone;
 a slim topbar carries the Abicus brand and an app-level pill bar —
 Outflows · Assets · Claims · Mortgage — in the same "option 4" style,
@@ -87,7 +98,7 @@ still exclude refunds. The "Refunds dropped" metric is unchanged.
   titles (same size and font as "Categorised Transactions").
 - The description search box is wider.
 - "Show matched pattern" is now a checkbox pill, matching the
-  Hide-balances control in My Assets.
+  Hide-balances control in Assets.
 - Download/database captions trimmed to one line each.
 - The page background is the shell grey top to bottom (cards, panels and
   sidebar stay light).

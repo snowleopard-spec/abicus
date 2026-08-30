@@ -21,7 +21,7 @@ _loader = ChoiceLoader(
                 "outflows": FileSystemLoader(str(ROOT / "apps" / "outflows" / "templates")),
                 "assets":   FileSystemLoader(str(ROOT / "apps" / "assets" / "templates")),
                 "claims":   FileSystemLoader(str(ROOT / "apps" / "claims" / "templates")),
-                "loan":     FileSystemLoader(str(ROOT / "apps" / "loan" / "templates")),
+                "mortgage": FileSystemLoader(str(ROOT / "apps" / "mortgage" / "templates")),
             }
         ),
     ]

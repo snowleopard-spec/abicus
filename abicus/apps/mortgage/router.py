@@ -4,8 +4,8 @@ from decimal import Decimal, InvalidOperation
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 
-from abicus.apps.loan.config import load_loan, loan_to_dict, save_loan
-from abicus.apps.loan.simulate import Loan, generate_schedule, simulate_state
+from abicus.apps.mortgage.config import load_loan, loan_to_dict, save_loan
+from abicus.apps.mortgage.simulate import Loan, generate_schedule, simulate_state
 from abicus.templating import templates
 
 api_router = APIRouter()
@@ -19,8 +19,8 @@ views_router = APIRouter()
 def page(request: Request):
     return templates.TemplateResponse(
         request,
-        "loan/page.html",
-        {"active": "loan"},
+        "mortgage/page.html",
+        {"active": "mortgage"},
     )
 
 
