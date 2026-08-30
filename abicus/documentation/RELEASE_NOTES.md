@@ -6,6 +6,14 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*New: sortable transaction panels.* The Unmapped, Excluded, Duplicates
+and Refunds panels have clickable column headers: click to sort
+ascending (▲), click again to flip (▼). Date, Description, Amount and
+Account are sortable (plus Category on Excluded); amounts sort
+numerically, text case-insensitively. Each panel keeps its own sort
+independently and it persists with the session, like the table filters.
+Until a header is clicked, rows keep their natural statement order.
+
 *Naming locked in: Outflows · Assets · Claims · Mortgage.* The four app
 names are now canonical everywhere — tabs, page titles, routes, code and
 docs. The `loan` app is renamed `mortgage` end to end: directory
