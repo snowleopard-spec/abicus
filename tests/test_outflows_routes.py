@@ -288,6 +288,76 @@ def test_detect_endpoint(app, monkeypatch):
     assert body["format"] == "Format C" and body["account"] is None
 
 
+def test_state_save_load_roundtrip(app, tmp_path, monkeypatch):
+    """Save a session as a state file, list it, load it into a fresh
+    session with df and UI state intact; delete it; reject traversal."""
+    from abicus.apps.outflows import router as outflows
+
+    monkeypatch.setattr(outflows, "STATES_DIR", tmp_path)
+
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-08-01", "2026-08-02"]),
+        "description": ["SHOP A", "REFUND B"],
+        "amount": [10.0, -3.0],
+        "account": ["A", "A"],
+        "category": ["Groceries", "Groceries"],
+        "matched_pattern": ["shop a", "refund"],
+        "source_file": ["aug.xls", "aug.xls"],
+        "duplicate": [False, False],
+        "refund": [False, True],
+        "pre_categorised": [False, False],
+    })
+    payload = {
+        "session_id": "orig",
+        "rows": outflows._df_to_records(df),
+        "duplicates_count": 0,
+        "dropped_negatives": 1,
+    }
+    outflows.SESSIONS["test-state"] = {"df": df, "payload": payload}
+    ui = {
+        "dateRange": {"from": "2026-08-01", "to": "2026-08-31"},
+        "tableFilter": {"category": "All", "account": "A", "search": "x", "matched": True},
+        "reincludedRef": [1],
+    }
+    try:
+        c = TestClient(app)
+        r = c.post("/api/outflows/state/save/test-state",
+                   json={"label": "Aug close", "ui": ui})
+        assert r.status_code == 200, r.text
+        assert r.json() == {"file": "Aug close.json", "label": "Aug close", "n_rows": 2}
+
+        r = c.get("/api/outflows/state/list")
+        states = r.json()["states"]
+        assert len(states) == 1 and states[0]["label"] == "Aug close"
+
+        r = c.post("/api/outflows/state/load", json={"file": "Aug close.json"})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        sid = body["session"]["session_id"]
+        assert sid != "orig" and sid in outflows.SESSIONS
+        # UI round-trips (defaults filled for unsent fields).
+        assert body["ui"]["reincludedRef"] == [1]
+        assert body["ui"]["tableFilter"]["search"] == "x"
+        assert body["meta"]["source_files"] == ["aug.xls"]
+        # The rebuilt df has proper dtypes.
+        df2 = outflows.SESSIONS[sid]["df"]
+        assert list(df2["refund"]) == [False, True]
+        assert str(df2["date"].dtype).startswith("datetime64")
+        outflows.SESSIONS.pop(sid, None)
+
+        # Traversal / bad names rejected.
+        r = c.post("/api/outflows/state/load", json={"file": "../evil.json"})
+        assert r.status_code == 400
+        r = c.post("/api/outflows/state/delete", json={"file": "nope.json"})
+        assert r.status_code == 404
+
+        r = c.post("/api/outflows/state/delete", json={"file": "Aug close.json"})
+        assert r.status_code == 200
+        assert c.get("/api/outflows/state/list").json()["states"] == []
+    finally:
+        outflows.SESSIONS.pop("test-state", None)
+
+
 def test_db_commit_honours_manual_exclusions(app, monkeypatch):
     """Rows excluded by hand via the × button (excluded_row_idx) are
     dropped from the committed view."""

@@ -56,6 +56,8 @@
     wireTableFilters();
     wireDownloads();
     wireHighlightToMap();
+    wireStates();
+    refreshStatesList();
     await tryRestoreSession();
   }
 
@@ -149,6 +151,146 @@
   function stampRowIndices() {
     if (!state.session || !state.session.rows) return;
     state.session.rows.forEach((r, i) => { r._idx = i; });
+  }
+
+  // Re-apply the current override sets to freshly (re)hydrated rows.
+  function reapplyOverrides() {
+    const rows = state.session.rows;
+    for (const idx of state.unsuppressedDup) {
+      if (rows[idx]) rows[idx].duplicate = false;
+    }
+    for (const idx of state.reincludedExcl) {
+      if (rows[idx]) rows[idx]._reincluded = true;
+    }
+    for (const idx of state.reincludedRef) {
+      if (rows[idx]) rows[idx]._refIncluded = true;
+    }
+    state.session.duplicates_count = Math.max(
+      0, (state.session.duplicates_count || 0) - state.unsuppressedDup.size,
+    );
+  }
+
+  // ---- Saved states (cross-restart persistence) ----
+  function wireStates() {
+    $("state-save").addEventListener("click", saveState);
+    $("state-load").addEventListener("click", loadState);
+    $("state-delete").addEventListener("click", deleteState);
+    $("state-recat").addEventListener("click", recategoriseSession);
+  }
+
+  async function refreshStatesList() {
+    let resp;
+    try {
+      resp = await api.get("/api/outflows/state/list");
+    } catch { return; }
+    const states = resp.states || [];
+    const block = $("states-block");
+    const select = $("state-select");
+    select.innerHTML = "";
+    if (!states.length) {
+      hide(block);
+      return;
+    }
+    for (const s of states) {
+      const opt = document.createElement("option");
+      opt.value = s.file;
+      const when = (s.saved_at || "").replace("T", " ");
+      opt.textContent = `${s.label} — ${when}${s.n_rows != null ? ` (${s.n_rows} rows)` : ""}`;
+      select.appendChild(opt);
+    }
+    show(block);
+  }
+
+  function currentUiState() {
+    return {
+      dateRange: state.dateRange,
+      tableFilter: state.tableFilter,
+      unsuppressedDup: [...state.unsuppressedDup],
+      reincludedExcl: [...state.reincludedExcl],
+      manualExcl: [...state.manualExcl],
+      reincludedRef: [...state.reincludedRef],
+    };
+  }
+
+  async function saveState() {
+    if (!state.session) return;
+    let resp;
+    try {
+      resp = await api.postJson(`/api/outflows/state/save/${state.session.session_id}`, {
+        label: $("state-label").value,
+        ui: currentUiState(),
+      });
+    } catch { return; }
+    toast(`Saved state "${resp.label}" (${resp.n_rows} rows).`, "info");
+    $("state-label").value = "";
+    refreshStatesList();
+  }
+
+  async function loadState() {
+    const file = $("state-select").value;
+    if (!file) return;
+    let resp;
+    try {
+      resp = await api.postJson("/api/outflows/state/load", { file });
+    } catch { return; }
+
+    state.session = resp.session;
+    stampRowIndices();
+    const ui = resp.ui || {};
+    state.unsuppressedDup = new Set(ui.unsuppressedDup || []);
+    state.reincludedExcl = new Set(ui.reincludedExcl || []);
+    state.manualExcl = new Set(ui.manualExcl || []);
+    state.reincludedRef = new Set(ui.reincludedRef || []);
+    reapplyOverrides();
+    if (ui.dateRange && ui.dateRange.from) state.dateRange = ui.dateRange;
+    state.tableFilter = Object.assign(
+      { category: "All", account: "All", search: "", matched: false },
+      ui.tableFilter || {},
+    );
+    state.guesses = {};
+
+    const meta = resp.meta || {};
+    $("state-notice-text").textContent =
+      `Loaded "${meta.label || file}" (saved ${(meta.saved_at || "?").replace("T", " ")}). ` +
+      "Categories are frozen as of the save.";
+    show($("state-notice"));
+    hide($("restored-notice"));
+
+    saveSession();
+    renderResults(/* preserveDateRange */ true);
+    fetchGuesses();
+  }
+
+  async function deleteState() {
+    const select = $("state-select");
+    const file = select.value;
+    if (!file) return;
+    const label = select.options[select.selectedIndex].textContent;
+    if (!window.confirm(`Delete saved state:\n${label}?`)) return;
+    try {
+      await api.postJson("/api/outflows/state/delete", { file });
+    } catch { return; }
+    toast("State deleted.", "info");
+    refreshStatesList();
+  }
+
+  async function recategoriseSession() {
+    if (!state.session) return;
+    let resp;
+    try {
+      resp = await api.postJson(
+        `/api/outflows/session/recategorise/${state.session.session_id}`, {},
+      );
+    } catch { return; }
+    state.session = resp;
+    stampRowIndices();
+    reapplyOverrides();
+    state.guesses = {};
+    $("state-notice-text").textContent =
+      "Re-categorised against the current mapping and history.";
+    saveSession();
+    renderResults(/* preserveDateRange */ true);
+    fetchGuesses();
   }
 
   // ---- Dropzone / file list ----
@@ -365,6 +507,7 @@
       state.reincludedRef = new Set();
       state.guesses = {};
       hide($("restored-notice"));
+      hide($("state-notice"));
       hide(statusEl);
       renderResults();
       saveSession();

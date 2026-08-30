@@ -38,6 +38,21 @@
   <button id="compile-btn" type="button" class="btn btn-primary" disabled>Compile</button>
   <div id="compile-error" class="banner banner-error hidden"></div>
   <div id="compile-status" class="caption hidden"></div>
+
+  <div id="states-block" class="states-block hidden">
+    <h3>Saved states</h3>
+    <div class="states-controls">
+      <select id="state-select"></select>
+      <button id="state-load" type="button" class="btn">Load</button>
+      <button id="state-delete" type="button" class="btn">Delete</button>
+    </div>
+    <div id="state-notice" class="banner banner-info hidden">
+      <span id="state-notice-text"></span>
+      <button id="state-recat" type="button" class="btn">
+        Re-categorise with current rules
+      </button>
+    </div>
+  </div>
 </section>
 
 <section id="results" class="hidden">
@@ -70,6 +85,10 @@
       <input type="date" id="date-from" aria-label="From">
       <span class="arrow">→</span>
       <input type="date" id="date-to" aria-label="To">
+      <span class="state-save">
+        <input type="text" id="state-label" placeholder="State name…" maxlength="60">
+        <button id="state-save" type="button" class="btn">Save state</button>
+      </span>
     </div>
     <div id="date-caption" class="caption"></div>
   </section>

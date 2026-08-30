@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 import platform
+import re
 import subprocess
 import uuid
 from datetime import date, datetime
@@ -46,6 +48,10 @@ from abicus.apps.outflows.parsers.format_f import parse as parse_format_f
 from abicus.templating import templates
 
 MAPPING_PATH = Path(__file__).parent / "config" / "mapping.json"
+# Saved app states. Lives under data/, which is gitignored — state files
+# contain full transaction data and must never reach git.
+STATES_DIR = Path(__file__).parent / "data" / "states"
+STATE_VERSION = 1
 
 PARSERS = {
     "Format A": parse_format_a,
@@ -785,6 +791,169 @@ def api_history_categorise(session_id: str, body: HistoryCategoriseBody):
         "category": category,
         "updated_idx": [int(i) for i in df.index[mask]],
     }
+
+
+# ---- Saved states ----
+# A state file is one JSON document: the compiled session payload (rows and
+# all — every panel is derived from it) plus the client's UI/override state
+# and provenance. Loading rebuilds a server session from the rows.
+
+
+class UiState(BaseModel):
+    dateRange: dict = {}
+    tableFilter: dict = {}
+    unsuppressedDup: list[int] = []
+    reincludedExcl: list[int] = []
+    manualExcl: list[int] = []
+    reincludedRef: list[int] = []
+
+
+class StateSaveBody(BaseModel):
+    label: str = ""
+    ui: UiState = UiState()
+
+
+def _app_version() -> str:
+    try:
+        from importlib.metadata import version
+        return version("abicus")
+    except Exception:
+        return "unknown"
+
+
+def _state_path(filename: str) -> Path:
+    """Resolve a state filename safely inside STATES_DIR (no traversal)."""
+    name = Path(filename).name
+    if name != filename or not re.fullmatch(r"[A-Za-z0-9._ -]+\.json", name):
+        raise HTTPException(status_code=400, detail=f"Invalid state file name '{filename}'.")
+    return STATES_DIR / name
+
+
+@api_router.post("/state/save/{session_id}")
+def api_state_save(session_id: str, body: StateSaveBody):
+    state = _get_session(session_id)
+    label = body.label.strip() or datetime.now().strftime("state %Y-%m-%d %H:%M")
+    slug = re.sub(r"[^A-Za-z0-9._ -]+", "_", label).strip("_ ") or "state"
+    path = STATES_DIR / f"{slug}.json"
+
+    doc = {
+        "state_version": STATE_VERSION,
+        "meta": {
+            "saved_at": datetime.now().isoformat(timespec="seconds"),
+            "app_version": _app_version(),
+            "label": label,
+            "n_rows": len(state["df"]),
+            "source_files": sorted(
+                state["df"]["source_file"].astype(str).unique().tolist()
+            ) if "source_file" in state["df"].columns else [],
+        },
+        "session": {k: v for k, v in state["payload"].items() if k != "session_id"},
+        "ui": body.ui.model_dump(),
+    }
+    STATES_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(doc, ensure_ascii=False))
+    return {"file": path.name, "label": label, "n_rows": doc["meta"]["n_rows"]}
+
+
+@api_router.get("/state/list")
+def api_state_list():
+    if not STATES_DIR.exists():
+        return {"states": []}
+    states = []
+    for p in sorted(STATES_DIR.glob("*.json")):
+        try:
+            doc = json.loads(p.read_text())
+            meta = doc.get("meta", {})
+            states.append({
+                "file": p.name,
+                "label": meta.get("label", p.stem),
+                "saved_at": meta.get("saved_at", ""),
+                "n_rows": meta.get("n_rows"),
+            })
+        except (OSError, ValueError):
+            continue  # unreadable file — skip rather than break the picker
+    states.sort(key=lambda s: s["saved_at"], reverse=True)
+    return {"states": states}
+
+
+class StateFileBody(BaseModel):
+    file: str
+
+
+@api_router.post("/state/load")
+def api_state_load(body: StateFileBody):
+    path = _state_path(body.file)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"State '{body.file}' not found.")
+    try:
+        doc = json.loads(path.read_text())
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Corrupt state file: {e}")
+    if doc.get("state_version") != STATE_VERSION:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported state_version {doc.get('state_version')!r}.",
+        )
+
+    payload = doc.get("session") or {}
+    rows = payload.get("rows") or []
+    if not rows:
+        raise HTTPException(status_code=400, detail="State file contains no rows.")
+
+    df = pd.DataFrame(rows)
+    df["date"] = pd.to_datetime(df["date"])
+    for col in ("duplicate", "refund", "pre_categorised"):
+        df[col] = df[col].fillna(False).astype(bool) if col in df.columns else False
+    df["amount"] = df["amount"].astype(float)
+
+    session_id = uuid.uuid4().hex
+    payload["session_id"] = session_id
+    SESSIONS[session_id] = {"df": df, "payload": payload}
+    return {"session": payload, "ui": doc.get("ui", {}), "meta": doc.get("meta", {})}
+
+
+@api_router.post("/state/delete")
+def api_state_delete(body: StateFileBody):
+    path = _state_path(body.file)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"State '{body.file}' not found.")
+    path.unlink()
+    return {"deleted": body.file}
+
+
+@api_router.post("/session/recategorise/{session_id}")
+def api_session_recategorise(session_id: str):
+    """Re-run categorisation on a session's rows against the CURRENT
+    mapping and history — used after loading a frozen state to bring it up
+    to date with rules added since it was saved."""
+    state = _get_session(session_id)
+    try:
+        rebuilt, n_rules, mapping_warnings = build_mapping_if_changed()
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=f"Mapping build failed: {e}")
+    try:
+        mapping = load_mapping(MAPPING_PATH)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError):
+        valid_cats = None
+    try:
+        history, history_warnings = load_history_mapping(
+            HISTORY_PATH, valid_categories=valid_cats
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Transaction history: {e}")
+
+    df = categorise_dataframe(state["df"], mapping, history)
+    state["df"] = df
+    payload = state["payload"]
+    payload["rows"] = _df_to_records(df)
+    payload["mapping_status"] = {"rebuilt": rebuilt, "n_rules": n_rules}
+    payload["mapping_warnings"] = mapping_warnings
+    payload["history_warnings"] = history_warnings
+    return payload
 
 
 @api_router.post("/db/commit/{session_id}")
