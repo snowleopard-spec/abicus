@@ -14,7 +14,18 @@
   {% block head %}{% endblock %}
 </head>
 <body data-active="{{ active }}">
-  {% include "_sidebar.html" %}
+  <header class="topbar">
+    <div class="topbar__brand">
+      <img class="brand-icon" src="/shell/static/img/abicus.png?v={{ asset_v }}" alt="" aria-hidden="true">
+      <span class="wordmark">Abicus</span>
+    </div>
+    <nav class="pill-tabs app-tabs" aria-label="Apps">
+      <a href="/outflows" class="pill-tab app-tab--outflows">Outflows</a>
+      <a href="/assets" class="pill-tab app-tab--assets">Assets</a>
+      <a href="/claims" class="pill-tab app-tab--claims">Claims</a>
+      <a href="/loan" class="pill-tab app-tab--loan">Mortgage</a>
+    </nav>
+  </header>
   <main class="content">
     <header class="page-header">
       <div class="page-header__title">

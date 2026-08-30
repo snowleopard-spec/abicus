@@ -13,8 +13,6 @@ html, body {
 }
 
 body {
-  display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
   min-height: 100vh;
 }
 
@@ -24,30 +22,23 @@ a {
 }
 a:hover { color: var(--accent-hover); }
 
-/* ------- Sidebar ------- */
-.sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
+/* ------- Top bar (brand + app tabs) ------- */
+.topbar {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  padding: var(--space-4) 0;
-}
-
-.sidebar__brand {
-  padding: var(--space-3) var(--space-4) var(--space-5);
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  text-align: center;
+  padding: var(--space-3) var(--space-6);
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+}
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 .brand-icon {
-  width: 72px;
-  height: 72px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: block;
   object-fit: contain;
@@ -60,47 +51,61 @@ a:hover { color: var(--accent-hover); }
   color: #556B2F;
 }
 
-.sidebar__nav { padding: 0 var(--space-3); }
-.nav-section { margin-bottom: var(--space-5); }
-.nav-section__label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  padding: var(--space-2) var(--space-3);
+/* ------- Pill tabs (shared: app tabs + in-app page tabs) ------- */
+.pill-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  background: var(--bg-card);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(40, 35, 30, 0.12);
+  overflow: hidden;
 }
-.nav-link {
-  display: flex;
+.pill-tab {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 10px var(--space-3);
-  border-radius: var(--radius-sm);
+  padding: 0.6rem 1.3rem;
+  font-size: 1.02rem;
   color: var(--text-secondary);
-  font-size: var(--text-md);
-  font-weight: 500;
-  margin-bottom: 2px;
+  text-decoration: none;
+  white-space: nowrap;
+  border-left: 1px solid var(--border);
 }
-.nav-link__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: contain;
-  flex-shrink: 0;
-  display: block;
-}
-.nav-link:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-body[data-active="outflows"] .nav-outflows,
-body[data-active="assets"]   .nav-assets,
-body[data-active="claims"]   .nav-claims,
-body[data-active="loan"]     .nav-loan {
-  background: var(--bg-active);
-  color: var(--accent);
+.pill-tab:first-child { border-left: none; }
+.pill-tab:hover { color: var(--text-primary); }
+.pill-tab--active {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  border-left-color: transparent;
   font-weight: 600;
+}
+.pill-tab--active:hover { color: #fff; }
+.pill-tab--active + .pill-tab { border-left-color: transparent; }
+
+/* App tabs: centred in the topbar so the brand never shifts them; the
+   active app comes from body[data-active]. */
+.app-tabs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+}
+body[data-active="outflows"] .app-tab--outflows,
+body[data-active="assets"]   .app-tab--assets,
+body[data-active="claims"]   .app-tab--claims,
+body[data-active="loan"]     .app-tab--loan {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  border-left-color: transparent;
+  font-weight: 600;
+}
+body[data-active="outflows"] .app-tab--outflows + .pill-tab,
+body[data-active="assets"]   .app-tab--assets + .pill-tab,
+body[data-active="claims"]   .app-tab--claims + .pill-tab,
+body[data-active="loan"]     .app-tab--loan + .pill-tab {
+  border-left-color: transparent;
 }
 
 /* ------- Content area ------- */
