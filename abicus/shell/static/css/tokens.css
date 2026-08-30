@@ -1,5 +1,5 @@
 :root {
-  --bg-app: #f6f7fa;
+  --bg-app: #F4F2EC; /* uniform across all apps (Claims' background) */
   --bg-sidebar: #ffffff;
   --bg-card: #ffffff;
   --bg-hover: #f1f3f7;

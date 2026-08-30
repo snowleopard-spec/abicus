@@ -1,6 +1,6 @@
 /* ---------- Assets theme — olive / Avenir Next ---------- */
 body[data-active="assets"] {
-  --bg-app: #FAF6EF;
+  --bg-app: #F4F2EC; /* uniform across all apps (Claims' background) */
   --bg-sidebar: #FFFFFF;
   --bg-card: #FFFFFF;
   --bg-hover: #EFE8DC;

@@ -1,6 +1,6 @@
 /* ---------- Outflows theme — earthy / Playfair ---------- */
 body[data-active="outflows"] {
-  --bg-app: #f6f7fa; /* grey page ground; cards/panels/sidebar stay light */
+  --bg-app: #F4F2EC; /* uniform across all apps (Claims' background) */
   --bg-sidebar: #FFFFFF;
   --bg-card: #FFFFFF;
   --bg-hover: #EDE7DF;
