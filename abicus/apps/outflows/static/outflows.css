@@ -387,6 +387,12 @@ body[data-active="outflows"] .page-header { position: relative; }
   max-height: 320px;
   overflow: auto;
 }
+.mini-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.mini-table th.sortable:hover { color: var(--accent); }
 .mini-table {
   width: 100%;
   border-collapse: collapse;

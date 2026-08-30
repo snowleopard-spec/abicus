@@ -16,6 +16,7 @@
     manualExcl: new Set(),
     reincludedRef: new Set(),
     guesses: {},                                   // row _idx → {category, matched, score}
+    panelSort: {},                                 // panel → {key, dir}
   };
 
   // sessionStorage keys — cleared on tab close, per-tab so nothing leaks
@@ -73,6 +74,7 @@
         reincludedExcl: [...state.reincludedExcl],
         manualExcl: [...state.manualExcl],
         reincludedRef: [...state.reincludedRef],
+        panelSort: state.panelSort,
       }));
     } catch { /* quota / privacy mode — silently ignore */ }
   }
@@ -116,6 +118,7 @@
       const r = state.session.rows[idx];
       if (r) { r._refIncluded = true; state.reincludedRef.add(idx); }
     }
+    if (saved.panelSort) state.panelSort = saved.panelSort;
     // Duplicates count is a stored summary — decrement for restored un-suppresses.
     state.session.duplicates_count = Math.max(
       0, (state.session.duplicates_count || 0) - state.unsuppressedDup.size,
@@ -730,13 +733,15 @@
 
     const table = document.createElement("table");
     table.className = "mini-table";
-    table.innerHTML =
-      "<thead><tr>" +
-      "<th>Date</th><th>Description</th><th>Amount</th><th>Account</th>" +
-      "<th class=\"action-col\"></th>" +
-      "</tr></thead>";
+    table.appendChild(miniTableHead("refunds", [
+      { key: "date", label: "Date" },
+      { key: "description", label: "Description" },
+      { key: "amount", label: "Amount" },
+      { key: "account", label: "Account" },
+      { label: "", cls: "action-col" },
+    ]));
     const tbody = document.createElement("tbody");
-    for (const r of refunds) {
+    for (const r of sortPanelRows("refunds", refunds)) {
       const tr = document.createElement("tr");
       tr.innerHTML =
         `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
@@ -784,14 +789,16 @@
 
     const table = document.createElement("table");
     table.className = "mini-table";
-    table.innerHTML =
-      "<thead><tr>" +
-      "<th>Date</th><th>Description</th><th>Amount</th><th>Guess</th>" +
-      "<th>Account</th>" +
-      "<th class=\"action-col\"></th>" +
-      "</tr></thead>";
+    table.appendChild(miniTableHead("unmapped", [
+      { key: "date", label: "Date" },
+      { key: "description", label: "Description" },
+      { key: "amount", label: "Amount" },
+      { label: "Guess" },
+      { key: "account", label: "Account" },
+      { label: "", cls: "action-col" },
+    ]));
     const tbody = document.createElement("tbody");
-    for (const r of unmapped) {
+    for (const r of sortPanelRows("unmapped", unmapped)) {
       const tr = document.createElement("tr");
       tr.innerHTML =
         `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
@@ -1086,14 +1093,16 @@
 
     const table = document.createElement("table");
     table.className = "mini-table";
-    table.innerHTML =
-      "<thead><tr>" +
-      "<th>Date</th><th>Description</th><th>Amount</th>" +
-      "<th>Category</th><th>Account</th>" +
-      "<th class=\"action-col\"></th>" +
-      "</tr></thead>";
+    table.appendChild(miniTableHead("excluded", [
+      { key: "date", label: "Date" },
+      { key: "description", label: "Description" },
+      { key: "amount", label: "Amount" },
+      { key: "category", label: "Category" },
+      { key: "account", label: "Account" },
+      { label: "", cls: "action-col" },
+    ]));
     const tbody = document.createElement("tbody");
-    for (const r of excludedRows) {
+    for (const r of sortPanelRows("excluded", excludedRows)) {
       const tr = document.createElement("tr");
       tr.innerHTML =
         `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
@@ -1159,13 +1168,15 @@
 
     const table = document.createElement("table");
     table.className = "mini-table";
-    table.innerHTML =
-      "<thead><tr>" +
-      "<th>Date</th><th>Description</th><th>Amount</th><th>Account</th>" +
-      "<th class=\"action-col\"></th>" +
-      "</tr></thead>";
+    table.appendChild(miniTableHead("duplicates", [
+      { key: "date", label: "Date" },
+      { key: "description", label: "Description" },
+      { key: "amount", label: "Amount" },
+      { key: "account", label: "Account" },
+      { label: "", cls: "action-col" },
+    ]));
     const tbody = document.createElement("tbody");
-    for (const r of duplicates) {
+    for (const r of sortPanelRows("duplicates", duplicates)) {
       const tr = document.createElement("tr");
       tr.innerHTML =
         `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
@@ -1200,28 +1211,57 @@
     renderForDateRange();
   }
 
-  function renderMiniPanel(panelId, summaryId, introId, rowsId, title, intro, rows, cols) {
-    $(summaryId).textContent = title;
-    $(introId).textContent = intro;
-    const wrap = $(rowsId);
-    if (rows.length === 0) { wrap.innerHTML = ""; return; }
-    const headers = {
-      date: "Date", description: "Description", amount: "Amount",
-      category: "Category", account: "Account",
-    };
-    let html = '<table class="mini-table"><thead><tr>';
-    for (const c of cols) html += `<th>${headers[c]}</th>`;
-    html += "</tr></thead><tbody>";
-    for (const r of rows) {
-      html += "<tr>";
-      for (const c of cols) {
-        if (c === "amount") html += `<td class="amount">${fmtSGD.format(r[c])}</td>`;
-        else html += `<td>${escapeHtml(String(r[c] ?? ""))}</td>`;
+  // ---- Panel sorting (unmapped / excluded / duplicates / refunds) ----
+  // Click a column header to sort that panel; click again to flip
+  // direction. Per-panel state, persisted with the session.
+
+  function panelSortFor(panel) {
+    return (state.panelSort || {})[panel] || null;
+  }
+
+  function togglePanelSort(panel, key) {
+    if (!state.panelSort) state.panelSort = {};
+    const cur = state.panelSort[panel];
+    state.panelSort[panel] =
+      cur && cur.key === key ? { key, dir: -cur.dir } : { key, dir: 1 };
+    saveSession();
+    renderForDateRange();
+  }
+
+  function sortPanelRows(panel, rows) {
+    const sort = panelSortFor(panel);
+    if (!sort) return rows;
+    const { key, dir } = sort;
+    const val = (r) =>
+      key === "amount" ? (r.amount ?? 0) : String(r[key] ?? "").toLowerCase();
+    return [...rows].sort((a, b) => {
+      const va = val(a), vb = val(b);
+      return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
+    });
+  }
+
+  // Build a thead with sortable headers. cols: [{key, label}] — an entry
+  // without a key (e.g. Guess, action column) is not sortable.
+  function miniTableHead(panel, cols) {
+    const sort = panelSortFor(panel);
+    const thead = document.createElement("thead");
+    const tr = document.createElement("tr");
+    for (const c of cols) {
+      const th = document.createElement("th");
+      if (c.cls) th.className = c.cls;
+      th.textContent = c.label;
+      if (c.key) {
+        th.classList.add("sortable");
+        th.title = `Sort by ${c.label}`;
+        if (sort && sort.key === c.key) {
+          th.textContent = `${c.label} ${sort.dir === 1 ? "▲" : "▼"}`;
+        }
+        th.addEventListener("click", () => togglePanelSort(panel, c.key));
       }
-      html += "</tr>";
+      tr.appendChild(th);
     }
-    html += "</tbody></table>";
-    wrap.innerHTML = html;
+    thead.appendChild(tr);
+    return thead;
   }
 
   function escapeHtml(s) {
