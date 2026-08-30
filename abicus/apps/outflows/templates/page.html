@@ -2,9 +2,8 @@
 {% block title %}Spending Review · Abicus{% endblock %}
 {% block page_title %}Spending Review{% endblock %}
 {% block page_actions %}
-<a href="/outflows/breakdown" class="btn">Monthly breakdown</a>
-<a href="/outflows/history" class="btn">Transaction History Table</a>
-<a href="/outflows/mapping" class="btn">Mapping Table</a>
+{% set tab = "review" %}
+{% include "outflows/_tabs.html" %}
 {% endblock %}
 
 {% block head %}

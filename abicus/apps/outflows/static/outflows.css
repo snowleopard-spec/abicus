@@ -233,6 +233,38 @@ code {
 }
 .date-controls .arrow { color: var(--text-muted); font-size: 1.1rem; }
 
+/* ---------- Page tabs ("option 4": stadium bar, filled active pill) ---- */
+.ofx-tabs {
+  display: inline-flex;
+  align-items: stretch;
+  background: var(--bg-card);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(61, 50, 41, 0.10);
+  overflow: hidden;
+}
+.ofx-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.55rem 1.15rem;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+  border-left: 1px solid var(--border-light);
+}
+.ofx-tab:first-child { border-left: none; }
+.ofx-tab:hover { color: var(--text-primary); }
+.ofx-tab--active {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  border-left-color: transparent;
+  font-weight: 600;
+}
+.ofx-tab--active:hover { color: #fff; }
+/* No divider bleeding out of the active pill's right edge either. */
+.ofx-tab--active + .ofx-tab { border-left-color: transparent; }
+
 /* ---------- Saved states ---------- */
 .date-controls .state-save {
   margin-left: auto;

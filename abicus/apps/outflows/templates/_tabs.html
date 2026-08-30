@@ -1,0 +1,9 @@
+{# Segmented pill tab bar for the four outflows pages ("option 4" style:
+   stadium container, solid filled pill on the active tab). Set `tab` to
+   one of review | breakdown | history | mapping before including. #}
+<nav class="ofx-tabs" aria-label="Outflows pages">
+  <a href="/outflows/" class="ofx-tab {% if tab == 'review' %}ofx-tab--active{% endif %}">Spending Review</a>
+  <a href="/outflows/breakdown" class="ofx-tab {% if tab == 'breakdown' %}ofx-tab--active{% endif %}">Monthly Breakdown</a>
+  <a href="/outflows/history" class="ofx-tab {% if tab == 'history' %}ofx-tab--active{% endif %}">Transaction History Table</a>
+  <a href="/outflows/mapping" class="ofx-tab {% if tab == 'mapping' %}ofx-tab--active{% endif %}">Mapping Table</a>
+</nav>
