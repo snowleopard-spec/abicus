@@ -411,3 +411,72 @@ def test_db_commit_honours_manual_exclusions(app, monkeypatch):
         assert descs == ["KEEP ME", "EXCLUDE ME", "KEEP ME TOO", "REFUND"]
     finally:
         outflows.SESSIONS.pop("test-commit-excl", None)
+
+
+def test_db_edit_endpoints(app, tmp_path, monkeypatch):
+    """DB Edit flow: list rows, edit a category in place, delete a row and
+    restore it verbatim via the undo payload."""
+    from abicus.apps.outflows import db
+    from abicus.apps.outflows import router as outflows
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "transactions.db")
+    monkeypatch.setattr(
+        outflows, "load_categories", lambda: ({"Groceries", "Dining"}, set())
+    )
+
+    db.upsert([
+        {"date": "2026-08-01", "description": "NTUC", "amount": 12.5,
+         "category": "Groceries", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+        {"date": "2026-08-02", "description": "KFC", "amount": 8.0,
+         "category": "Dining", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+    ])
+
+    c = TestClient(app)
+
+    r = c.get("/api/outflows/db/rows")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [row["description"] for row in body["rows"]] == ["KFC", "NTUC"]
+    assert body["categories"] == ["Dining", "Groceries"]
+    ntuc = body["rows"][1]
+
+    # Edit a category in place.
+    r = c.post("/api/outflows/db/update-category",
+               json={"tx_hash": ntuc["tx_hash"], "category": "Dining"})
+    assert r.status_code == 200, r.text
+    rows = c.get("/api/outflows/db/rows").json()["rows"]
+    assert all(row["category"] == "Dining" for row in rows)
+
+    # Unknown category → 400; unknown hash → 404.
+    r = c.post("/api/outflows/db/update-category",
+               json={"tx_hash": ntuc["tx_hash"], "category": "Nope"})
+    assert r.status_code == 400
+    r = c.post("/api/outflows/db/update-category",
+               json={"tx_hash": "deadbeef", "category": "Dining"})
+    assert r.status_code == 404
+
+    # Delete returns the full row for undo.
+    r = c.post("/api/outflows/db/delete-row", json={"tx_hash": ntuc["tx_hash"]})
+    assert r.status_code == 200, r.text
+    deleted = r.json()["deleted"]
+    assert deleted["description"] == "NTUC"
+    assert deleted["category"] == "Dining"
+    assert len(c.get("/api/outflows/db/rows").json()["rows"]) == 1
+
+    # Deleting the same hash again → 404.
+    r = c.post("/api/outflows/db/delete-row", json={"tx_hash": ntuc["tx_hash"]})
+    assert r.status_code == 404
+
+    # Restore re-inserts it verbatim — same tx_hash, same committed_at.
+    r = c.post("/api/outflows/db/restore-row", json={"row": deleted})
+    assert r.status_code == 200, r.text
+    rows = c.get("/api/outflows/db/rows").json()["rows"]
+    assert len(rows) == 2
+    restored = next(row for row in rows if row["tx_hash"] == ntuc["tx_hash"])
+    assert restored["committed_at"] == deleted["committed_at"]
+
+    # Restore with a gutted payload → 400.
+    r = c.post("/api/outflows/db/restore-row", json={"row": {"tx_hash": "x"}})
+    assert r.status_code == 400

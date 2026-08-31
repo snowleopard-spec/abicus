@@ -116,6 +116,62 @@ def clear() -> dict:
     return {"deleted": int(n)}
 
 
+ROW_COLS = [
+    "tx_hash", "date", "description", "amount", "category", "account",
+    "matched_pattern", "source_file", "committed_at",
+]
+
+
+def list_rows() -> list[dict]:
+    """Every DB row, newest first, for the DB Edit page."""
+    if not DB_PATH.exists():
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""SELECT {", ".join(ROW_COLS)}
+                FROM transactions
+                ORDER BY date DESC, committed_at DESC, description ASC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_category(tx_hash: str, category: str) -> bool:
+    """Set one row's category in place. Returns False if the hash is gone
+    (e.g. the row was deleted from another tab)."""
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE transactions SET category = ? WHERE tx_hash = ?",
+            (category, tx_hash),
+        )
+        return cur.rowcount > 0
+
+
+def delete_row(tx_hash: str) -> dict | None:
+    """Delete one row, returning its full content so the client can offer
+    an undo. Returns None if the hash doesn't exist."""
+    with _connect() as conn:
+        row = conn.execute(
+            f"SELECT {', '.join(ROW_COLS)} FROM transactions WHERE tx_hash = ?",
+            (tx_hash,),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute("DELETE FROM transactions WHERE tx_hash = ?", (tx_hash,))
+    return dict(row)
+
+
+def restore_row(row: dict) -> None:
+    """Re-insert a row previously returned by delete_row (undo). Keyed on
+    the original tx_hash, so restoring twice is a no-op overwrite."""
+    with _connect() as conn:
+        conn.execute(
+            f"""INSERT OR REPLACE INTO transactions
+                ({", ".join(ROW_COLS)})
+                VALUES ({", ".join("?" * len(ROW_COLS))})""",
+            tuple(row.get(c) for c in ROW_COLS),
+        )
+
+
 def load_description_categories() -> list[tuple[str, str]]:
     """Distinct (description, category) pairs for the guess feature.
     Where a description was committed under more than one category over

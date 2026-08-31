@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}DB Edit · Abicus{% endblock %}
+{% block page_title %}DB Edit{% endblock %}
+
+{% block page_actions %}
+{% set tab = "dbedit" %}
+{% include "outflows/_tabs.html" %}
+{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="/outflows/static/outflows.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/outflows/static/dbedit.css?v={{ asset_v }}">
+{% endblock %}
+
+{% block content %}
+<p class="caption" style="margin-top:0;">
+  Edit <code>data/transactions.db</code> directly — the rolling store the
+  Monthly Breakdown reads. <strong>E</strong> changes a row's category;
+  <strong>×</strong> deletes the row (with a brief undo). Changes apply
+  immediately. Note: re-committing the same period from Spending Review
+  re-applies that session's rows, which can re-insert a deleted row or
+  overwrite an edited category.
+</p>
+
+<section class="card">
+  <h2>Database Transactions</h2>
+  <div class="table-filters">
+    <label>
+      Category
+      <select id="filter-category"></select>
+    </label>
+    <label>
+      Account
+      <select id="filter-account"></select>
+    </label>
+    <label>
+      Search
+      <input type="search" id="filter-search" placeholder="Filter descriptions…" autocomplete="off">
+    </label>
+    <label>
+      From
+      <input type="date" id="filter-from">
+    </label>
+    <label>
+      To
+      <input type="date" id="filter-to">
+    </label>
+  </div>
+  <div id="db-summary" class="caption"></div>
+  <div id="db-rows" class="mini-table-wrap dbedit-table-wrap"></div>
+  <div id="db-empty" class="banner banner-info hidden">
+    The database is empty. Commit a session from Spending Review first.
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="/outflows/static/dbedit.js?v={{ asset_v }}"></script>
+{% endblock %}

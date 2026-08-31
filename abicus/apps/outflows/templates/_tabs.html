@@ -1,10 +1,11 @@
-{# Nested pill tab bar for the four outflows pages (shared .pill-tabs
-   style from shell.css; .ofx-tabs adds the header-centred positioning).
-   Set `tab` to one of review | breakdown | history | mapping before
-   including. #}
+{# Nested pill tab bar for the outflows pages (shared .pill-tabs style
+   from shell.css; .ofx-tabs adds the header-centred positioning).
+   Set `tab` to one of review | breakdown | history | mapping | dbedit
+   before including. #}
 <nav class="pill-tabs ofx-tabs" aria-label="Outflows pages">
   <a href="/outflows/" class="pill-tab {% if tab == 'review' %}pill-tab--active{% endif %}">Spending Review</a>
   <a href="/outflows/breakdown" class="pill-tab {% if tab == 'breakdown' %}pill-tab--active{% endif %}">Monthly Breakdown</a>
   <a href="/outflows/history" class="pill-tab {% if tab == 'history' %}pill-tab--active{% endif %}">Transaction History Table</a>
   <a href="/outflows/mapping" class="pill-tab {% if tab == 'mapping' %}pill-tab--active{% endif %}">Mapping Table</a>
+  <a href="/outflows/dbedit" class="pill-tab {% if tab == 'dbedit' %}pill-tab--active{% endif %}">DB Edit</a>
 </nav>

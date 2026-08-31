@@ -105,6 +105,15 @@ def breakdown_page(request: Request):
     )
 
 
+@views_router.get("/dbedit")
+def dbedit_page(request: Request):
+    return templates.TemplateResponse(
+        request,
+        "outflows/dbedit.html",
+        {"active": "outflows"},
+    )
+
+
 class MappingRule(BaseModel):
     partial_string: str
     category: str
@@ -988,6 +997,84 @@ def api_db_clear():
     """Wipe every row from transactions.db. Destructive — the frontend
     guards this with a confirm() dialog."""
     return db.clear()
+
+
+# ---- DB Edit ----
+# Direct row-level editing of transactions.db. Writes are immediate; the
+# delete flow returns the deleted row so the client can offer an undo that
+# restores it verbatim (same tx_hash, same committed_at).
+
+
+class DbUpdateCategoryBody(BaseModel):
+    tx_hash: str
+    category: str
+
+
+class DbHashBody(BaseModel):
+    tx_hash: str
+
+
+class DbRestoreBody(BaseModel):
+    row: dict
+
+
+@api_router.get("/db/rows")
+def api_db_rows():
+    """All DB rows plus the valid category list for the edit dropdown."""
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError):
+        valid_cats = set()
+    return {"rows": db.list_rows(), "categories": sorted(valid_cats)}
+
+
+@api_router.post("/db/update-category")
+def api_db_update_category(body: DbUpdateCategoryBody):
+    try:
+        valid_cats, _ = load_categories()
+    except (FileNotFoundError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"categories.txt: {e}")
+
+    category = body.category.strip()
+    if category not in valid_cats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Category '{category}' is not in categories.txt.",
+        )
+    if not db.update_category(body.tx_hash, category):
+        raise HTTPException(
+            status_code=404,
+            detail="Row not found in the database — reload the page.",
+        )
+    return {"ok": True, "category": category}
+
+
+@api_router.post("/db/delete-row")
+def api_db_delete_row(body: DbHashBody):
+    row = db.delete_row(body.tx_hash)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Row not found in the database — reload the page.",
+        )
+    return {"deleted": row}
+
+
+@api_router.post("/db/restore-row")
+def api_db_restore_row(body: DbRestoreBody):
+    """Undo a delete: re-insert the row exactly as delete-row returned it."""
+    missing = [
+        c for c in ("tx_hash", "date", "description", "amount",
+                    "category", "account", "committed_at")
+        if body.row.get(c) in (None, "")
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Restore payload is missing fields: {missing}.",
+        )
+    db.restore_row(body.row)
+    return {"ok": True}
 
 
 class BreakdownPdfBody(BaseModel):

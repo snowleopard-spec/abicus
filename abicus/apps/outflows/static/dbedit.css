@@ -1,0 +1,75 @@
+/* ---------- DB Edit page ---------- */
+
+/* Full-page table, not a 320px panel: fill the viewport under the header. */
+.dbedit-table-wrap {
+  padding: 0;
+  max-height: calc(100vh - 340px);
+  min-height: 12rem;
+}
+
+.dbedit-table-wrap td:first-child { white-space: nowrap; }
+
+/* Denser rows than the Spending Review panels: this table is the whole
+   page, so vertical padding is trimmed and the account column is kept to
+   one line (wrapping "UOB Black Card" doubled the row height). */
+.dbedit-table-wrap td {
+  padding-top: 0.12rem;
+  padding-bottom: 0.12rem;
+}
+.dbedit-table-wrap td:nth-last-child(2) { white-space: nowrap; }
+
+/* Two circle buttons per row (E + ×) share one action cell. */
+.mini-table th.dbedit-actions-col,
+.mini-table td.dbedit-actions-col {
+  width: 4.4rem;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
+  text-align: center;
+  white-space: nowrap;
+}
+.dbedit-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+/* E (edit category) — same circle as the row actions on Spending Review,
+   soft blue like +H since both assign a category. */
+.editcat-btn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #E3EBF5;
+  border-color: #9FB4D0;
+  color: #3D6491;
+}
+.editcat-btn:hover {
+  background: #D4E0F0;
+  border-color: #6E8CB4;
+  color: #2C4F7A;
+}
+
+/* Undo button inside the delete toast. */
+.toast .undo-btn {
+  margin-left: 0.75rem;
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-alt);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast .undo-btn:hover {
+  background: var(--bg-active);
+  border-color: var(--border-strong);
+}
+
+.table-filters input[type="date"] {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
