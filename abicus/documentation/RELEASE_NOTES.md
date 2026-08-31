@@ -25,6 +25,21 @@ field) deliberately keeps its financial meaning — a mortgage is a loan;
 only the app identity was renamed. The frozen build spec and the legacy
 migration script's source references are untouched as historical record.
 
+*Polish: page titles match tab titles.* Every page heading and browser
+title now mirrors its tab name: the Outflows subpages take their
+nested-tab names (History editor → Transaction History Table, Mapping
+editor → Mapping Table) and Assets/Claims/Mortgage take their app-tab
+names (Claims drops the Medi·Claim wordmark). The remaining stale
+"Tools / …" breadcrumbs are removed everywhere, completing the earlier
+main-page cleanup.
+
+*Polish: one page background across all apps.* All four apps share
+Claims' warm off-white `#F4F2EC` as the page ground — set as `--bg-app`
+in the shell tokens and in the Outflows and Assets theme overrides,
+replacing Outflows' shell grey and Assets' `#FAF6EF` (this supersedes
+the "shell grey top to bottom" item below). Switching app tabs no
+longer changes the ground colour.
+
 *New: app tabs replace the sidebar (shell-wide).* The sidebar is gone;
 a slim topbar carries the Abicus brand and an app-level pill bar —
 Outflows · Assets · Claims · Mortgage — in the same "option 4" style,
