@@ -18,6 +18,13 @@
 }
 .dbedit-table-wrap td:nth-last-child(2) { white-space: nowrap; }
 
+/* Match the Transaction History Table's look: same font size, the same
+   even-row stripe as the Tabulator theme in outflows.css, and a row
+   hover. nth-child striping tracks the visible (filtered/sorted) order. */
+.dbedit-table-wrap .mini-table { font-size: 0.92rem; }
+.dbedit-table-wrap tbody tr:nth-child(even) { background: #FBF8F2; }
+.dbedit-table-wrap tbody tr:hover { background: var(--surface-alt); }
+
 /* Two circle buttons per row (E + ×) share one action cell. */
 .mini-table th.dbedit-actions-col,
 .mini-table td.dbedit-actions-col {
