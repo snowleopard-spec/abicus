@@ -6,6 +6,15 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Polish: DB Edit and Mapping tables match the Transaction History
+Table's look.* DB Edit gets the same 0.92rem font, the Tabulator
+theme's even-row cream stripe (`#FBF8F2`, striped in visible order so
+filtering/sorting keeps it correct), and a row hover; its tighter
+vertical padding stays. Mapping Table — already sharing the History
+table's Tabulator theme — gains the same single-line
+nowrap-with-ellipsis cells, so a long rule can no longer wrap and
+break the uniform row height.
+
 *New: DB Edit tab.* A fifth Outflows page for editing
 `data/transactions.db` row by row — no compile session needed. The
 panel mirrors Categorised Transactions: the same filter row (category,
