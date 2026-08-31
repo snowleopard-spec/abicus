@@ -6,6 +6,23 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*New: DB Edit tab.* A fifth Outflows page for editing
+`data/transactions.db` row by row — no compile session needed. The
+panel mirrors Categorised Transactions: the same filter row (category,
+account, description search, plus a From/To date range), sortable
+column headers, and a summary line (row count and total, reflecting
+the current filter). Each row carries two circle buttons in the
+Spending Review style: **E** (soft blue, like +H) opens the category
+dropdown and updates the row's category in place; **×** (beige, like
+the exclude button) deletes the row. Writes are immediate; deletes show
+an 8-second "Undo" toast that restores the row verbatim — same
+`tx_hash`, same `committed_at` — so an undone delete is
+indistinguishable from never having deleted. Filters and sort persist
+per tab like the Spending Review filters. Caveat, stated on the page:
+re-committing the same period from Spending Review re-applies that
+session's rows, which can re-insert a deleted row or overwrite an
+edited category.
+
 *New: sortable transaction panels.* The Unmapped, Excluded, Duplicates
 and Refunds panels have clickable column headers: click to sort
 ascending (▲), click again to flip (▼). Date, Description, Amount and
