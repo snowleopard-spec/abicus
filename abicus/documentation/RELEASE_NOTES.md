@@ -6,6 +6,21 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Perf: guess engine swapped to rapidfuzz.* Per `RAPIDFUZZ_SPEC.md`: the
+free-deletion metric is now computed by rapidfuzz's C++ Levenshtein with
+`weights=(1, 0, 1)` (insertion 1, deletion-from-query 0, substitution 1 —
+exactly `len(candidate) − LCS`), batched through `process.extract` so a
+whole corpus pass stays inside C++; the character-multiset prefilter is
+deleted. `rapidfuzz==3.14.3` pinned in requirements (binary wheel, no
+compiler). Semantics are unchanged and verified three ways: the existing
+contract tests pass unmodified, a new equivalence test asserts engine ==
+pure-Python reference costs over 300 random pairs (`lcs_len` is retained
+as that documented reference), and a 120-query sweep of real descriptions
+produced byte-identical guesses. Timing at today's 596-entry corpus,
+30 queries × full corpus: **19.4 ms** — ~63× the pure-Python engine
+(1.22 s like-for-like, no prefilter) and ~6× the old prefiltered path
+(0.12 s), with the prefilter's correctness risk gone.
+
 *Polish: DB Edit and Mapping tables match the Transaction History
 Table's look.* DB Edit gets the same 0.92rem font, the Tabulator
 theme's even-row cream stripe (`#FBF8F2`, striped in visible order so
