@@ -236,12 +236,13 @@ code {
 
 /* ---------- Page tabs (visuals shared via shell .pill-tabs) ---------- */
 /* Anchored to the centre of the header so per-page action buttons
-   (Save changes, Export PDF) never shift the bar's position. */
+   (Save changes, Export PDF) never shift the bar's position. Dropped
+   below the header line so the 2x page titles never run under it. */
 body[data-active="outflows"] .page-header { position: relative; }
 .ofx-tabs {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: calc(100% + 24px);
   transform: translate(-50%, -50%);
 }
 

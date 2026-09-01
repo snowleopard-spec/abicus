@@ -6,6 +6,12 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Design: page titles doubled.* The page h1 goes 28px → 56px across all
+four apps. Outflows' centred page-tab bar, which the wide titles ran
+under, drops below the header line into the watermark band
+(`.ofx-tabs` top offset) — it stays centre-anchored so per-page action
+buttons still never shift it.
+
 *Design: watermark title replaces the topbar brand.* The brand icon and
 Playfair wordmark are gone from the topbar (the app pill-tabs now centre
 on their own). In their place, every page carries a very large "Abicus"

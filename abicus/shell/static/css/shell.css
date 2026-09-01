@@ -135,7 +135,7 @@ body[data-active="mortgage"] .app-tab--mortgage + .pill-tab {
 }
 .page-header h1 {
   margin: 4px 0 0;
-  font-size: var(--text-2xl);
+  font-size: 56px; /* 2× --text-2xl */
   font-family: "Playfair Display", Georgia, serif;
   font-weight: 700;
   letter-spacing: -0.005em;
