@@ -28,16 +28,27 @@ only ever produce a "wrong" guess in leave-one-out.
 
 The scoring core is pure and I/O-free (Maillard similarity.py discipline);
 corpus assembly takes plain data structures so callers own all I/O.
+
+Engine: rapidfuzz (C++), per RAPIDFUZZ_SPEC.md. The metric is expressed as
+a weighted Levenshtein — weights=(insertion, deletion, substitution) =
+(1, 0, 1) with the QUERY as the first argument, so deletions from the query
+are free — which equals len(candidate) − LCS(query, candidate) exactly.
+`lcs_len` is retained as the pure-Python reference implementation; the test
+suite asserts engine/reference equivalence over a random sample. The old
+character-multiset prefilter is gone — rapidfuzz makes it unnecessary.
 """
 
 from __future__ import annotations
 
 import re
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 import yaml
+from rapidfuzz import process
+from rapidfuzz.distance import Levenshtein
+
+_WEIGHTS = (1, 0, 1)  # (insertion, deletion, substitution): query deletions free
 
 CONFIG_PATH = Path(__file__).parent / "config" / "guess.yaml"
 
@@ -88,7 +99,10 @@ def normalise(description: str) -> str:
 
 
 def lcs_len(a: str, b: str) -> int:
-    """Longest-common-subsequence length, O(len(a)·len(b)) DP."""
+    """Longest-common-subsequence length, O(len(a)·len(b)) DP.
+
+    Pure-Python REFERENCE implementation only — the engine below runs on
+    rapidfuzz. Kept so the test suite can assert engine equivalence."""
     if not a or not b:
         return 0
     prev = [0] * (len(b) + 1)
@@ -102,8 +116,10 @@ def lcs_len(a: str, b: str) -> int:
 
 def distance(query: str, candidate: str) -> int:
     """Free-deletion edit distance: substitutions/insertions cost 1,
-    deletions from the query are free."""
-    return len(candidate) - lcs_len(query, candidate)
+    deletions from the query are free. Equals len(candidate) − LCS.
+
+    Argument order matters: free deletions apply to the FIRST string."""
+    return Levenshtein.distance(query, candidate, weights=_WEIGHTS)
 
 
 def score(query: str, candidate: str) -> float:
@@ -111,7 +127,8 @@ def score(query: str, candidate: str) -> float:
     that line up with the query. 1.0 = candidate is a subsequence of query."""
     if not candidate:
         return 0.0
-    return lcs_len(query, candidate) / len(candidate)
+    n = len(candidate)
+    return (n - distance(query, candidate)) / n
 
 
 def best_guess(
@@ -133,25 +150,30 @@ def best_guess(
     q = normalise(query)
     if not q:
         return None
-    q_counts = Counter(q)
+
+    cands = [c for c in corpus if len(c) >= cfg.min_candidate_length]
+    if not cands:
+        return None
+    # One batch call so all pairwise scoring stays inside C++; the relative
+    # score depends on each candidate's length, so thresholding and ranking
+    # happen here on the returned costs.
+    results = process.extract(
+        q, cands,
+        scorer=Levenshtein.distance,
+        scorer_kwargs={"weights": _WEIGHTS},
+        limit=None,
+    )
 
     best: tuple[float, int, str] | None = None  # (score, len, cand) for ranking
     best_entry: dict | None = None
-    for cand, (category, display) in corpus.items():
+    for cand, cost, _idx in results:
         n = len(cand)
-        if n < cfg.min_candidate_length:
-            continue
-        # Character-multiset overlap is an upper bound on LCS, so this can
-        # never discard a candidate that would clear min_score.
-        overlap = sum((q_counts & Counter(cand)).values())
-        if overlap / n < cfg.min_score:
-            continue
-        s = lcs_len(q, cand) / n
+        s = (n - cost) / n  # == LCS/len(candidate)
         if s < cfg.min_score:
             continue
-        rank = (s, n, cand)
         if best is None or (s, n) > best[:2] or ((s, n) == best[:2] and cand < best[2]):
-            best = rank
+            best = (s, n, cand)
+            category, display = corpus[cand]
             best_entry = {"category": category, "matched": display, "score": round(s, 3)}
     return best_entry
 

@@ -36,6 +36,20 @@ def test_distance_free_deletions():
     assert lcs_len("", "abc") == 0
 
 
+def test_engine_matches_pure_python_reference():
+    """RAPIDFUZZ_SPEC.md §4: the rapidfuzz engine must compute costs
+    identical to the pure-Python reference (len(candidate) − LCS) over a
+    random sample."""
+    import random
+
+    rng = random.Random(42)
+    alphabet = "abcdefghij -x"
+    for _ in range(300):
+        q = "".join(rng.choices(alphabet, k=rng.randint(0, 30)))
+        c = "".join(rng.choices(alphabet, k=rng.randint(1, 25)))
+        assert distance(q, c) == len(c) - lcs_len(q, c), (q, c)
+
+
 def test_best_guess_threshold_and_min_length():
     corpus = {
         "ntuc fp-bedok": ("Groceries", "NTUC FP-BEDOK"),
