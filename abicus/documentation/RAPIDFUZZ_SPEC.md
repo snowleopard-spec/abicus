@@ -1,9 +1,13 @@
 # Spec — Swapping the guess engine to rapidfuzz
 
-> **Status:** not scheduled. This is a ready-to-run spec for the day the
-> pure-Python LCS guesser (see `guess.py`) becomes too slow — roughly when
-> the distinct-description corpus grows ~10× beyond today's ~700, or when
-> the prefilter starts rejecting matches you wanted. Until then, do nothing.
+> **Status: implemented 2026-09-01** (commit `de0851a`), ahead of the
+> original trigger, at owner request. All §5 done-when criteria met:
+> `rapidfuzz==3.14.3` wheel install; contract tests pass unchanged plus a
+> 300-pair engine/reference equivalence test; 120 real queries verified
+> guess-identical to the pure-Python engine; full pass (30 queries × 596
+> corpus) = 19.4 ms, ~63× the pure-Python engine. Prefilter deleted;
+> `lcs_len` retained as the documented pure-Python reference. This spec
+> stays as the record of the design and the C++-in-Python background (§2).
 
 ---
 
