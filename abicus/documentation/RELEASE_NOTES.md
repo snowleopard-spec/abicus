@@ -6,8 +6,8 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
-*Design: page titles doubled.* The page h1 goes 28px → 56px across all
-four apps. Outflows' centred page-tab bar, which the wide titles ran
+*Design: page titles enlarged.* The page h1 goes 28px → 42px (1.5×;
+briefly 2× but that overpowered the band) across all four apps. Outflows' centred page-tab bar, which the wide titles ran
 under, drops below the header line into the watermark band
 (`.ofx-tabs` top offset) — it stays centre-anchored so per-page action
 buttons still never shift it.
