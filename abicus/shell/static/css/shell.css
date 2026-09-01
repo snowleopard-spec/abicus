@@ -23,13 +23,13 @@ a {
 a:hover { color: var(--accent-hover); }
 
 /* ------- Top bar (brand + app tabs) ------- */
+/* No chrome: the brand and app tabs float directly on the background. */
 .topbar {
   position: relative;
   display: flex;
   align-items: center;
-  padding: var(--space-3) var(--space-6);
-  background: var(--bg-sidebar);
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-4) var(--space-6) var(--space-3);
+  background: transparent;
 }
 .topbar__brand {
   display: flex;
@@ -57,7 +57,7 @@ a:hover { color: var(--accent-hover); }
   align-items: stretch;
   background: var(--bg-card);
   border-radius: 999px;
-  box-shadow: 0 2px 8px rgba(40, 35, 30, 0.12);
+  box-shadow: 0 1px 2px rgba(61, 50, 41, 0.05), 0 6px 20px rgba(61, 50, 41, 0.12);
   overflow: hidden;
 }
 .pill-tab {
@@ -89,7 +89,6 @@ a:hover { color: var(--accent-hover); }
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--border);
 }
 body[data-active="outflows"] .app-tab--outflows,
 body[data-active="assets"]   .app-tab--assets,

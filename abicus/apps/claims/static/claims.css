@@ -49,10 +49,10 @@ body[data-active="claims"] .page-header h1 .dot { color: var(--accent); padding:
   flex: 1 1 0;
   min-width: 0;
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 11px 16px;
-  box-shadow: 0 1px 2px rgba(31,42,36,.06), 0 6px 20px rgba(31,42,36,.05);
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  box-shadow: var(--shadow-card);
 }
 .claims-summary .n { font-size: 21px; font-weight: 600; }
 .claims-summary .l {
@@ -93,8 +93,8 @@ body[data-active="claims"] .page-header h1 .dot { color: var(--accent); padding:
   font-size: 14px;
   cursor: pointer;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 14px;
+  border-radius: 999px;
+  padding: 8px 16px;
   background: var(--bg-card);
   color: var(--text-primary);
   transition: .12s;
@@ -109,8 +109,8 @@ body[data-active="claims"] .page-header h1 .dot { color: var(--accent); padding:
 .archived-banner {
   background: var(--warning-soft);
   color: var(--warning);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: none;
+  border-radius: var(--radius-md);
   padding: 8px 14px;
   margin-bottom: 14px;
   font-size: 13px;
@@ -122,12 +122,13 @@ body[data-active="claims"] .page-header h1 .dot { color: var(--accent); padding:
   width: auto;
   max-width: 100%;
   margin: 0 auto;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border: none;
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 1px 2px rgba(31,42,36,.06), 0 6px 20px rgba(31,42,36,.05);
+  box-shadow: var(--shadow-card);
 }
 .claims-table thead th {
   text-align: center;
@@ -250,11 +251,11 @@ body[data-active="claims"] .page-header h1 .dot { color: var(--accent); padding:
 /* ---------- Modal (use the original's quiet form) ---------- */
 .claims-modal {
   background: var(--bg-card);
-  border-radius: 14px;
+  border-radius: var(--radius-xl);
   width: 560px;
   max-width: 100%;
   box-shadow: 0 20px 60px rgba(0,0,0,.25);
-  border: 1px solid var(--border);
+  border: none;
 }
 .claims-modal h2 {
   margin: 0;
@@ -300,7 +301,7 @@ body[data-active="claims"] .page-header h1 .dot { color: var(--accent); padding:
 .claims-modal .err { color: var(--danger); font-size: 13px; min-height: 18px; }
 .claims-modal button {
   font-family: inherit; font-size: 14px; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 999px; padding: 8px 16px;
   background: var(--bg-card); color: var(--text-primary); transition: .12s;
 }
 .claims-modal button:hover { border-color: var(--text-muted); }

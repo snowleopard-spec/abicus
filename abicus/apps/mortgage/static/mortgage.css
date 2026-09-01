@@ -80,7 +80,7 @@ body[data-active="mortgage"] {
   align-items: center;
   justify-content: center;
   text-align: center;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   min-height: 0;
 }
 .bs-cap + .bs-cap { margin-top: 3px; }
@@ -115,7 +115,7 @@ body[data-active="mortgage"] {
   background: var(--danger-soft);
   color: var(--danger);
   border-left: 3px solid var(--danger);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-size: 13px;
 }
 .bs-empty {

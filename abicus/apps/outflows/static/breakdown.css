@@ -11,10 +11,11 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
-  padding: 0.6rem 0.8rem;
+  padding: 0.6rem 0.9rem;
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 .month-picker-label {
   font-weight: 600;
@@ -74,7 +75,6 @@
 .breakdown-tile-total {
   grid-column: 1 / -1;
   background: #FBF7EF;
-  border-color: #D6C9B0;
 }
 .breakdown-tile-total .breakdown-tile-title {
   font-size: 1.05rem;
@@ -85,9 +85,10 @@
 
 .breakdown-tile {
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0.9rem 1rem;
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 1rem 1.1rem;
   display: flex;
   flex-direction: column;
   min-width: 0;

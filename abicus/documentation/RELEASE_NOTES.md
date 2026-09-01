@@ -6,6 +6,24 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Design: floating panels across all four apps.* From a design-inspiration
+image (floating SaaS admin panels): panels are now the only structure —
+separation comes from elevation, not lines. The shared cream background
+stays; every colour token is unchanged. Concretely: cards, tiles,
+table-wraps, Outflows' collapsible panels, Breakdown tiles/month-picker
+and the Claims stats + main table lose their 1px borders and instead
+float on a soft warm-tinted shadow (`--shadow-card`, redefined in
+`tokens.css`); corner radii step up (`--radius-sm/md/lg` → 6/10/14px,
+new `--radius-xl` 18px for modals); the white topbar with its
+border-bottom is dissolved — the brand and the pill app-tabs sit
+directly on the background; buttons go fully pill-shaped (shared `.btn`,
+Claims controls/modal, check-pills, the DB Edit undo button); inputs and
+selects round to 10px. Interior hairlines (table row rules, Tabulator
+theme, banner left-bars, dashed dropzones) deliberately stay — the
+borderless rule applies to floating containers, not inner elements.
+Verified by screenshotting all four apps plus the Breakdown, History and
+DB Edit tabs against a live server.
+
 *Perf: guess engine swapped to rapidfuzz.* Per `RAPIDFUZZ_SPEC.md`: the
 free-deletion metric is now computed by rapidfuzz's C++ Levenshtein with
 `weights=(1, 0, 1)` (insertion 1, deletion-from-query 0, substitution 1 —
