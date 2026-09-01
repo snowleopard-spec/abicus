@@ -6,6 +6,19 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Design: watermark title replaces the topbar brand.* The brand icon and
+Playfair wordmark are gone from the topbar (the app pill-tabs now centre
+on their own). In their place, every page carries a very large "Abicus"
+watermark — Poppins Black (the heavy rounded geometric of the design
+reference, `documentation/517AAFEA…jpeg`), 21.5vw, olive `#556B2F` at 8%
+opacity — spanning the band from the top of the page to the first panel,
+top-cropped, sent to back (negative z-index; the page canvas moved from
+`body` to `html` so nothing opaque sits under it, and the page-header's
+cream background became transparent for the same reason). `.page-body`
+gains top padding so the band reads before the first panel. Chosen from
+four rendered samples (tone-on-tone fill, outline, olive tint, stretched
+uppercase); the olive tint won.
+
 *Design: floating panels across all four apps.* From a design-inspiration
 image (floating SaaS admin panels): panels are now the only structure —
 separation comes from elevation, not lines. The shared cream background

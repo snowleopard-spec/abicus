@@ -6,6 +6,11 @@ html, body {
   height: 100%;
   background: var(--bg-app);
   color: var(--text-primary);
+}
+/* The canvas colour comes from <html>; body stays transparent so the
+   negative-z-index watermark can sit between the two. */
+body {
+  background: transparent;
   font-family: var(--font-sans);
   font-size: var(--text-md);
   line-height: 1.45;
@@ -14,6 +19,32 @@ html, body {
 
 body {
   min-height: 100vh;
+  position: relative;
+}
+
+/* ------- Watermark title (replaces the topbar brand) ------- */
+/* "Abicus" very large across the top of the page, olive at 8%,
+   behind everything (negative z-index keeps all in-flow content on
+   top without touching its stacking). Sized so the word spans the
+   band from the page top to the first panel, per the approved mock:
+   21.5vw ≈ 310px at 1440. */
+.watermark {
+  position: absolute;
+  top: -3.2vw;
+  left: 0;
+  right: 0;
+  z-index: -1;
+  padding-left: var(--space-5);
+  overflow: hidden;
+  font-family: "Poppins", var(--font-sans);
+  font-weight: 900;
+  font-size: 21.5vw;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+  color: rgba(85, 107, 47, 0.08);
+  pointer-events: none;
+  user-select: none;
 }
 
 a {
@@ -23,34 +54,14 @@ a {
 a:hover { color: var(--accent-hover); }
 
 /* ------- Top bar (brand + app tabs) ------- */
-/* No chrome: the brand and app tabs float directly on the background. */
+/* No chrome: the app tabs float directly on the background. */
 .topbar {
-  position: relative;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding: var(--space-4) var(--space-6) var(--space-3);
   background: transparent;
 }
-.topbar__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-.brand-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: block;
-  object-fit: contain;
-}
-.wordmark {
-  font-family: "Playfair Display", Georgia, serif;
-  font-size: var(--text-xl);
-  font-weight: 700;
-  letter-spacing: -0.005em;
-  color: #556B2F;
-}
-
 /* ------- Pill tabs (shared: app tabs + in-app page tabs) ------- */
 .pill-tabs {
   display: inline-flex;
@@ -82,14 +93,7 @@ a:hover { color: var(--accent-hover); }
 .pill-tab--active:hover { color: #fff; }
 .pill-tab--active + .pill-tab { border-left-color: transparent; }
 
-/* App tabs: centred in the topbar so the brand never shifts them; the
-   active app comes from body[data-active]. */
-.app-tabs {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-}
+/* App tabs: the active app comes from body[data-active]. */
 body[data-active="outflows"] .app-tab--outflows,
 body[data-active="assets"]   .app-tab--assets,
 body[data-active="claims"]   .app-tab--claims,
@@ -120,7 +124,7 @@ body[data-active="mortgage"] .app-tab--mortgage + .pill-tab {
   justify-content: space-between;
   padding: var(--space-5) var(--space-6) var(--space-4);
   gap: var(--space-4);
-  background: var(--bg-app);
+  background: transparent;
   border-bottom: 1px solid transparent;
 }
 .page-header__title { min-width: 0; }
@@ -154,7 +158,8 @@ body[data-active="mortgage"] .app-tab--mortgage + .pill-tab {
 }
 
 .page-body {
-  padding: var(--space-4) var(--space-6) var(--space-8);
+  /* Extra top room so the watermark band reads before the first panel. */
+  padding: 76px var(--space-6) var(--space-8);
   flex: 1 1 auto;
 }
 
