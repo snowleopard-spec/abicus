@@ -30,6 +30,7 @@ from abicus.apps.outflows.categorise import (
     load_mapping,
     normalise_text,
 )
+from abicus.apps.outflows.breakdown_html_export import build_breakdown_html
 from abicus.apps.outflows.html_export import build_html
 from abicus.apps.outflows.transaction_history import (
     DEFAULT_PATH as HISTORY_PATH,
@@ -990,6 +991,30 @@ def api_breakdown():
     """Return per-category, per-month spending totals from the DB, sorted
     by lifetime total descending for tile ordering."""
     return db.load_monthly_breakdown()
+
+
+@api_router.get("/breakdown/html")
+def api_breakdown_html():
+    """Fully self-contained HTML export of the breakdown page — every
+    month's data, vendored Plotly/Tabulator, zero network requests."""
+    content = build_breakdown_html()
+    filename = f"monthly_breakdown_{date.today().isoformat()}.html"
+    return Response(
+        content=content,
+        media_type="text/html",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api_router.get("/breakdown/transactions")
+def api_breakdown_transactions(month: str, category: str | None = None):
+    """The transactions behind one bar on the breakdown page: one month,
+    optionally one category (Monthly-total bars pass no category)."""
+    if not re.fullmatch(r"\d{4}-\d{2}", month):
+        raise HTTPException(
+            status_code=400, detail=f"Bad month '{month}' — expected YYYY-MM."
+        )
+    return {"rows": db.load_breakdown_transactions(month, category)}
 
 
 @api_router.post("/db/clear")

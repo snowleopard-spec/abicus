@@ -6,12 +6,15 @@
 {% set tab = "breakdown" %}
 {% include "outflows/_tabs.html" %}
 <button type="button" id="export-pdf-btn" class="btn btn-primary">Export PDF</button>
+<button type="button" id="export-html-btn" class="btn btn-primary">Export HTML</button>
 {% endblock %}
 
 {% block head %}
+<link rel="stylesheet" href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator_simple.min.css">
 <link rel="stylesheet" href="/outflows/static/outflows.css?v={{ asset_v }}">
 <link rel="stylesheet" href="/outflows/static/breakdown.css?v={{ asset_v }}">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -32,6 +35,30 @@
 </div>
 
 <div id="breakdown-grid" class="breakdown-grid hidden"></div>
+
+<section id="breakdown-detail" class="card hidden">
+  <div class="breakdown-detail-header">
+    <h2 id="breakdown-detail-title">Transactions</h2>
+    <button type="button" id="breakdown-detail-close" class="unsuppress-btn"
+            title="Close" aria-label="Close the transactions box">×</button>
+  </div>
+  <div class="table-filters">
+    <label>
+      Category
+      <select id="bd-filter-category"></select>
+    </label>
+    <label>
+      Account
+      <select id="bd-filter-account"></select>
+    </label>
+    <label>
+      Search
+      <input type="search" id="bd-filter-search" placeholder="Filter descriptions…" autocomplete="off">
+    </label>
+  </div>
+  <div id="breakdown-detail-caption" class="caption"></div>
+  <div id="breakdown-detail-table"></div>
+</section>
 {% endblock %}
 
 {% block scripts %}

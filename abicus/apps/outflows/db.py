@@ -234,3 +234,37 @@ def load_monthly_breakdown(selected_months: list[str] | None = None) -> dict:
     # Drop categories that have no rows in the selection.
     by_category = {k: v for k, v in by_category.items() if k in lifetime}
     return {"months": months, "by_category": by_category, "lifetime_totals": lifetime}
+
+
+def load_all_transactions() -> list[dict]:
+    """Every row's display columns, for the self-contained breakdown HTML
+    export. Same ordering as load_breakdown_transactions so the exported
+    page's per-bar lists match the live ones."""
+    if not DB_PATH.exists():
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT date, description, amount, category, account
+               FROM transactions
+               ORDER BY date ASC, amount DESC, description ASC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def load_breakdown_transactions(month: str, category: str | None = None) -> list[dict]:
+    """The rows behind one bar on the breakdown page: everything in a
+    month, optionally restricted to one category (the Monthly-total bars
+    pass no category)."""
+    if not DB_PATH.exists():
+        return []
+    query = """SELECT date, description, amount, category, account
+               FROM transactions
+               WHERE substr(date, 1, 7) = ?"""
+    params: list = [month]
+    if category is not None:
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY date ASC, amount DESC, description ASC"
+    with _connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]

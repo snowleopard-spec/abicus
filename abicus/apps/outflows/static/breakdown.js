@@ -49,10 +49,34 @@
     document.getElementById("breakdown-grid").classList.remove("hidden");
     wireShortcuts();
     wireExport();
+    document
+      .getElementById("breakdown-detail-close")
+      .addEventListener("click", hideDetail);
+    wireDetailFilters();
     redraw();
   }
 
   function wireExport() {
+    const htmlBtn = document.getElementById("export-html-btn");
+    if (htmlBtn) {
+      htmlBtn.addEventListener("click", async () => {
+        htmlBtn.disabled = true;
+        const originalText = htmlBtn.textContent;
+        htmlBtn.textContent = "Generating…";
+        try {
+          await api.download("/api/outflows/breakdown/html", {
+            method: "GET",
+            fallbackName: "monthly_breakdown.html",
+          });
+        } catch (err) {
+          alert(`Export failed: ${err.message || err}`);
+        } finally {
+          htmlBtn.disabled = false;
+          htmlBtn.textContent = originalText;
+        }
+      });
+    }
+
     const btn = document.getElementById("export-pdf-btn");
     if (!btn) return;
     btn.addEventListener("click", async () => {
@@ -124,6 +148,7 @@
   function redraw() {
     const grid = document.getElementById("breakdown-grid");
     grid.innerHTML = "";
+    hideDetail(); // a bar selection is stale once the month set changes
 
     // Months in canonical order, restricted to what's selected.
     const months = state.data.months.filter((m) => state.selectedMonths.has(m));
@@ -185,7 +210,11 @@
         }],
         chartLayout(chartH),
         { displayModeBar: false, responsive: true },
-      );
+      ).then((gd) => {
+        gd.on("plotly_click", (ev) => {
+          showDetail(months[ev.points[0].pointIndex], cat);
+        });
+      });
     }
   }
 
@@ -240,7 +269,126 @@
       }],
       chartLayout(totalH),
       { displayModeBar: false, responsive: true },
-    );
+    ).then((gd) => {
+      gd.on("plotly_click", (ev) => {
+        showDetail(months[ev.points[0].pointIndex], null);
+      });
+    });
+  }
+
+  // ---- Per-bar transaction detail box ----
+  // Mirrors the Spending Review page's Categorised Transactions section:
+  // a Tabulator table (sortable columns) behind category/account/search
+  // filters. Rows are fetched per clicked bar; filters are client-side.
+  let detailToken = 0; // discards stale responses when bars are clicked quickly
+  const detail = {
+    rows: [],
+    filter: { category: "All", account: "All", search: "" },
+    table: null,
+  };
+
+  function hideDetail() {
+    detailToken++;
+    document.getElementById("breakdown-detail").classList.add("hidden");
+  }
+
+  function wireDetailFilters() {
+    document.getElementById("bd-filter-category").addEventListener("change", (e) => {
+      detail.filter.category = e.target.value;
+      renderDetailTable();
+    });
+    document.getElementById("bd-filter-account").addEventListener("change", (e) => {
+      detail.filter.account = e.target.value;
+      renderDetailTable();
+    });
+    document.getElementById("bd-filter-search").addEventListener("input", (e) => {
+      detail.filter.search = e.target.value;
+      renderDetailTable();
+    });
+  }
+
+  async function showDetail(month, cat) {
+    const token = ++detailToken;
+    const section = document.getElementById("breakdown-detail");
+    const caption = document.getElementById("breakdown-detail-caption");
+    document.getElementById("breakdown-detail-title").textContent =
+      `${cat === null ? "All categories" : cat} — ${monthLabel(month)}`;
+    caption.textContent = "Loading…";
+    section.classList.remove("hidden");
+
+    let data;
+    try {
+      const params = new URLSearchParams({ month });
+      if (cat !== null) params.set("category", cat);
+      data = await api.get(`/api/outflows/breakdown/transactions?${params}`);
+    } catch (err) {
+      if (token !== detailToken) return;
+      caption.textContent = `Failed to load: ${err.message || err}`;
+      return;
+    }
+    if (token !== detailToken) return; // a newer click superseded this one
+
+    detail.rows = data.rows || [];
+    detail.filter = { category: "All", account: "All", search: "" };
+    document.getElementById("bd-filter-search").value = "";
+    renderDetailTable();
+    section.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function renderDetailTable() {
+    refreshDetailFilterOptions("bd-filter-category", "category");
+    refreshDetailFilterOptions("bd-filter-account", "account");
+
+    const { category, account, search } = detail.filter;
+    let view = detail.rows;
+    if (category !== "All") view = view.filter((r) => r.category === category);
+    if (account !== "All") view = view.filter((r) => r.account === account);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      view = view.filter((r) =>
+        String(r.description ?? "").toLowerCase().includes(q));
+    }
+
+    const total = view.reduce((a, r) => a + r.amount, 0);
+    document.getElementById("breakdown-detail-caption").textContent =
+      `${view.length} transaction${view.length === 1 ? "" : "s"} · ${fmtSGDprecise.format(total)}`;
+
+    if (!detail.table) {
+      detail.table = new Tabulator("#breakdown-detail-table", {
+        data: view,
+        layout: "fitColumns",
+        placeholder: "No transactions match the current filters.",
+        pagination: false,
+        maxHeight: "500px",
+        columns: [
+          { title: "Date", field: "date", width: 110, sorter: "string" },
+          { title: "Description", field: "description", minWidth: 200 },
+          { title: "Amount", field: "amount", hozAlign: "right", width: 110, sorter: "number",
+            formatter: (cell) => fmtSGD.format(cell.getValue()) },
+          { title: "Category", field: "category", width: 160 },
+          { title: "Account", field: "account", width: 160 },
+        ],
+      });
+    } else {
+      detail.table.replaceData(view);
+    }
+  }
+
+  function refreshDetailFilterOptions(selectId, field) {
+    const select = document.getElementById(selectId);
+    const current = detail.filter[field];
+    const values = [...new Set(detail.rows.map((r) => r[field]))].sort();
+    select.innerHTML = "";
+    for (const v of ["All", ...values]) {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      if (v === current) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (!["All", ...values].includes(current)) {
+      detail.filter[field] = "All";
+      select.value = "All";
+    }
   }
 
   function chartLayout(height) {

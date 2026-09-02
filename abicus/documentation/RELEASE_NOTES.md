@@ -6,6 +6,41 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Breakdown: self-contained HTML export.* An "Export HTML" button next
+to Export PDF downloads the whole Monthly Breakdown page as one
+offline-forever file (`monthly_breakdown_<date>.html`, ~5 MB): month
+chips, charts, clickable bars and the filter/sort/search transactions
+box all work identically, over the full DB (every month embedded, so
+the reader can flick between months at will — the export ignores the
+current chip selection by design). Zero network requests: Plotly
+2.35.2 and Tabulator 6.3.1 are inlined from new pinned copies in
+`apps/outflows/vendor/` (~5 MB of repo weight; the live pages still use
+the CDN), all shell/outflows/breakdown CSS is inlined, and the Google
+Fonts links are deliberately omitted (system font fallbacks). The
+mechanism (`breakdown_html_export.py`): the export embeds the live
+page's `breakdown.js` *verbatim*, preceded by an `api` shim that
+answers its two GET endpoints from an embedded JSON payload — so the
+export can't drift from the live page's behaviour. New endpoint
+`GET /api/outflows/breakdown/html`.
+
+*Breakdown: click a bar to see its transactions.* Every bar on the
+Monthly Breakdown page — the per-category tiles and the Monthly-total
+tile — is now clickable. A click opens a "⟨Category⟩ — ⟨Month⟩" box
+below the charts (extra top margin so it stands clear of the tile grid)
+built exactly like the Spending Review page's Categorised Transactions
+section: the same Tabulator table (sortable Date / Description / Amount
+/ Category / Account columns, `maxHeight` 500px so short lists stay
+compact) behind the same category/account/search filters, plus a
+caption with the filtered row count and precise total. Filters reset on
+each new bar click and are applied client-side to the fetched rows.
+Backed by a new
+`GET /api/outflows/breakdown/transactions?month=YYYY-MM[&category=…]`
+endpoint reading `transactions.db` (`db.load_breakdown_transactions`);
+a malformed month 400s. Clicking another bar replaces the box, × closes
+it, and changing the month selection hides it (stale selection); rapid
+clicks are race-guarded by a request token. Tabulator's CDN CSS/JS now
+load on the breakdown page too.
+
 *Design: page titles enlarged.* The page h1 goes 28px → 42px (1.5×;
 briefly 2× but that overpowered the band) across all four apps. Outflows' centred page-tab bar, which the wide titles ran
 under, drops below the header line into the watermark band

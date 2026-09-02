@@ -480,3 +480,74 @@ def test_db_edit_endpoints(app, tmp_path, monkeypatch):
     # Restore with a gutted payload → 400.
     r = c.post("/api/outflows/db/restore-row", json={"row": {"tx_hash": "x"}})
     assert r.status_code == 400
+
+
+def test_breakdown_transactions(app, tmp_path, monkeypatch):
+    """Per-bar drill-down: a month+category query returns just that bar's
+    rows; omitting category returns the whole month; bad months 400."""
+    from abicus.apps.outflows import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "transactions.db")
+    db.upsert([
+        {"date": "2026-08-01", "description": "NTUC", "amount": 12.5,
+         "category": "Groceries", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+        {"date": "2026-08-02", "description": "KFC", "amount": 8.0,
+         "category": "Dining", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+        {"date": "2026-07-15", "description": "NTUC", "amount": 20.0,
+         "category": "Groceries", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+    ])
+
+    c = TestClient(app)
+
+    # One bar: month + category.
+    r = c.get("/api/outflows/breakdown/transactions",
+              params={"month": "2026-08", "category": "Groceries"})
+    assert r.status_code == 200, r.text
+    rows = r.json()["rows"]
+    assert [row["description"] for row in rows] == ["NTUC"]
+    assert rows[0]["amount"] == 12.5
+
+    # Monthly-total bar: month only, all categories, date-ascending.
+    r = c.get("/api/outflows/breakdown/transactions",
+              params={"month": "2026-08"})
+    assert [row["description"] for row in r.json()["rows"]] == ["NTUC", "KFC"]
+
+    # Empty result for a month with no rows.
+    r = c.get("/api/outflows/breakdown/transactions",
+              params={"month": "2025-01"})
+    assert r.json()["rows"] == []
+
+    # Malformed month → 400.
+    r = c.get("/api/outflows/breakdown/transactions",
+              params={"month": "Aug 2026"})
+    assert r.status_code == 400
+
+
+def test_breakdown_html_export(app, tmp_path, monkeypatch):
+    """The self-contained export embeds the DB rows and vendored libs and
+    references no external scripts or stylesheets."""
+    import re as _re
+
+    from abicus.apps.outflows import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "transactions.db")
+    db.upsert([
+        {"date": "2026-08-01", "description": "NTUC", "amount": 12.5,
+         "category": "Groceries", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+    ])
+
+    c = TestClient(app)
+    r = c.get("/api/outflows/breakdown/html")
+    assert r.status_code == 200, r.text
+    assert "attachment" in r.headers["content-disposition"]
+    html = r.text
+    assert "window.__ABICUS_EXPORT__" in html
+    assert "NTUC" in html
+    assert "plotly.js v2.35.2" in html
+    assert "Tabulator v6.3.1" in html
+    # Self-contained: no external script/link tags at all.
+    assert not _re.search(r'<(?:script|link)[^>]+(?:src|href)="https?://', html)

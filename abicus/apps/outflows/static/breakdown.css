@@ -130,3 +130,17 @@
 @media (max-width: 560px) {
   .breakdown-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Per-bar transaction detail box ---------- */
+/* Bars are clickable — they open the transactions box below the grid. */
+.breakdown-tile-chart g.point path { cursor: pointer; }
+
+#breakdown-detail {
+  margin-top: 2.5rem;
+}
+.breakdown-detail-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
