@@ -17,9 +17,14 @@
     style: "currency", currency: "SGD", minimumFractionDigits: 2, maximumFractionDigits: 2,
   });
 
+  // Categories the header toggle removes from totals (and whose tiles it
+  // hides). Names must match config/categories.txt exactly.
+  const EXCLUDABLE_CATS = ["Rent", "Education", "Holidays", "Exceptional"];
+
   const state = {
     data: null,             // {months, by_category, lifetime_totals}
     selectedMonths: new Set(),
+    excludeHeavy: false,    // header toggle: drop EXCLUDABLE_CATS from view
   };
 
   // ---- Boot ----
@@ -123,25 +128,10 @@
   }
 
   function wireShortcuts() {
-    document.getElementById("chip-all").addEventListener("click", () => {
-      state.selectedMonths = new Set(state.data.months);
-      syncChipsToState();
+    document.getElementById("exclude-heavy").addEventListener("change", (e) => {
+      state.excludeHeavy = e.target.checked;
       redraw();
     });
-    document.getElementById("chip-none").addEventListener("click", () => {
-      state.selectedMonths.clear();
-      syncChipsToState();
-      redraw();
-    });
-  }
-
-  function syncChipsToState() {
-    for (const el of document.querySelectorAll(".month-chip")) {
-      const input = el.querySelector("input");
-      const on = state.selectedMonths.has(input.dataset.month);
-      input.checked = on;
-      el.classList.toggle("is-on", on);
-    }
   }
 
   // ---- Grid render ----
@@ -156,8 +146,11 @@
 
     // Compute per-category totals restricted to selected months.
     // Categories with $0 in the selection get filtered out — no point rendering an empty tile.
+    const catNames = Object.keys(byCat).filter(
+      (c) => !(state.excludeHeavy && EXCLUDABLE_CATS.includes(c)),
+    );
     const catTotals = {};
-    for (const cat of Object.keys(byCat)) {
+    for (const cat of catNames) {
       let t = 0;
       for (const m of months) t += byCat[cat][m] || 0;
       if (t > 0) catTotals[cat] = t;
@@ -176,14 +169,22 @@
     // Total tile a bit bigger.
     grid.style.setProperty("--total-chart-h", `${Math.min(520, chartH + 60)}px`);
 
+    // Grand total across the visible categories — the denominator for each
+    // tile's %-of-expenditure badge. Respects the exclude toggle by
+    // construction (excluded categories never reach catTotals).
+    const visibleGrand = categories.reduce((a, c) => a + catTotals[c], 0);
+
     let paletteIdx = 0;
     for (const cat of categories) {
+      const pct = visibleGrand > 0 ? (catTotals[cat] / visibleGrand) * 100 : 0;
+      const pctLabel = pct >= 0.5 ? `${Math.round(pct)}%` : "<1%";
       const tile = document.createElement("div");
       tile.className = "breakdown-tile";
       tile.innerHTML = `
         <div class="breakdown-tile-header">
           <span class="breakdown-tile-title">${escapeHtml(cat)}</span>
-          <span class="breakdown-tile-total">${fmtSGD.format(catTotals[cat])}</span>
+          <span class="breakdown-tile-pct" title="${pct.toFixed(1)}% of expenditure across the selected months">${pctLabel}</span>
+          <span class="breakdown-tile-amount">${fmtSGD.format(catTotals[cat])}</span>
         </div>
         <div class="breakdown-tile-chart"></div>
       `;
@@ -233,18 +234,22 @@
       return;
     }
 
-    // Sum every category's spend for each selected month.
+    // Sum each visible category's spend for each selected month — `categories`
+    // already excludes the toggled-off ones (and $0 categories, which add nothing).
     const monthTotals = months.map((m) => {
       let t = 0;
-      for (const cat of Object.keys(byCat)) t += byCat[cat][m] || 0;
+      for (const cat of categories) t += byCat[cat][m] || 0;
       return t;
     });
     const grandTotal = monthTotals.reduce((a, b) => a + b, 0);
+    const exclNote = state.excludeHeavy
+      ? ` · excl. ${EXCLUDABLE_CATS.join("/")}`
+      : "";
 
     tile.innerHTML = `
       <div class="breakdown-tile-header">
-        <span class="breakdown-tile-title">Monthly total (${months.length} month${months.length === 1 ? "" : "s"}, ${categories.length} categor${categories.length === 1 ? "y" : "ies"})</span>
-        <span class="breakdown-tile-total">${fmtSGDprecise.format(grandTotal)}</span>
+        <span class="breakdown-tile-title">Monthly total (${months.length} month${months.length === 1 ? "" : "s"}, ${categories.length} categor${categories.length === 1 ? "y" : "ies"}${exclNote})</span>
+        <span class="breakdown-tile-amount">${fmtSGDprecise.format(grandTotal)}</span>
       </div>
       <div class="breakdown-tile-chart"></div>
     `;
@@ -311,8 +316,11 @@
     const token = ++detailToken;
     const section = document.getElementById("breakdown-detail");
     const caption = document.getElementById("breakdown-detail-caption");
+    const allLabel = state.excludeHeavy
+      ? `All categories (excl. ${EXCLUDABLE_CATS.join("/")})`
+      : "All categories";
     document.getElementById("breakdown-detail-title").textContent =
-      `${cat === null ? "All categories" : cat} — ${monthLabel(month)}`;
+      `${cat === null ? allLabel : cat} — ${monthLabel(month)}`;
     caption.textContent = "Loading…";
     section.classList.remove("hidden");
 
@@ -328,7 +336,13 @@
     }
     if (token !== detailToken) return; // a newer click superseded this one
 
-    detail.rows = data.rows || [];
+    let rows = data.rows || [];
+    // Keep the "All categories" detail box consistent with the total bar
+    // that was clicked — excluded categories stay out of it too.
+    if (cat === null && state.excludeHeavy) {
+      rows = rows.filter((r) => !EXCLUDABLE_CATS.includes(r.category));
+    }
+    detail.rows = rows;
     detail.filter = { category: "All", account: "All", search: "" };
     document.getElementById("bd-filter-search").value = "";
     renderDetailTable();

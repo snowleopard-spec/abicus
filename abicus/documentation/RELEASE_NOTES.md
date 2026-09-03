@@ -6,6 +6,39 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ## Unreleased
 
+*Breakdown: exclude-heavy toggle replaces All/None.* The month picker's
+All/None shortcut buttons are gone (individual month chips remain); in
+their place sits a small switch labelled "Excl. Rent · Education ·
+Holidays · Exceptional". Off by default — the page opens exactly as
+before, every category shown. Flipping it removes those four categories
+from the Monthly-total bars and grand total, hides their tiles, and
+keeps the click-through transactions box consistent (an "All
+categories" bar click filters them out of the rows too, and the box
+title says so). The exclusion list lives in one constant at the top of
+`breakdown.js` (`EXCLUDABLE_CATS`); the HTML export's mirrored skeleton
+carries the same toggle, so exported files behave identically. The PDF
+export is untouched and always includes every category.
+
+*Breakdown: %-of-expenditure circle on each tile.* Each category tile's
+header gains a circular badge between the title and the SGD total,
+showing that category's share of total expenditure across the selected
+months (whole-percent, "<1%" below half a percent; hover for one
+decimal). The denominator is the sum of the visible categories, so it
+respects the exclude-heavy toggle — flip it and every share is
+recomputed against the reduced total. Styled in the same circle
+language as the row-action buttons on the Categorised Transactions
+table (1.6–2.1rem circle, 1px border, table-header beige fill). Both
+the toggle and the badge flow into the HTML export automatically — it
+embeds the live page's JS and CSS verbatim — verified in a generated
+export file.
+
+*Breakdown: brown highlight removed from tile header amounts.* The SGD
+amount in every tile header was picking up the Monthly-total tile's
+cream background via a class-name collision (`breakdown-tile-total`
+named both the full-width tile modifier and the amount span). The span
+is renamed `breakdown-tile-amount`; amounts now sit directly on the
+tile background.
+
 *Breakdown: self-contained HTML export.* An "Export HTML" button next
 to Export PDF downloads the whole Monthly Breakdown page as one
 offline-forever file (`monthly_breakdown_<date>.html`, ~5 MB): month

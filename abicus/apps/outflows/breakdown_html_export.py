@@ -62,8 +62,11 @@ _BODY_SKELETON = """
   <div class="month-picker">
     <span class="month-picker-label">Months:</span>
     <div id="month-chips" class="month-chips"></div>
-    <button type="button" id="chip-all" class="chip-shortcut">All</button>
-    <button type="button" id="chip-none" class="chip-shortcut">None</button>
+    <label class="exclude-toggle" title="Exclude Rent, Education, Holidays and Exceptional from totals and hide their tiles">
+      <input type="checkbox" id="exclude-heavy">
+      <span class="exclude-toggle-track"><span class="exclude-toggle-thumb"></span></span>
+      <span class="exclude-toggle-text">Excl. Rent · Education · Holidays · Exceptional</span>
+    </label>
   </div>
 </div>
 
