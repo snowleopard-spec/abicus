@@ -195,6 +195,7 @@
       const catMonths = byCat[cat] || {};
       const values = months.map((m) => catMonths[m] || 0);
       const labels = months.map(monthLabel);
+      const avg = months.length > 1 ? catTotals[cat] / months.length : null;
       Plotly.react(
         chartEl,
         [{
@@ -209,7 +210,7 @@
           hovertemplate: "<b>%{y}</b><br>%{customdata}<extra></extra>",
           customdata: values.map((v) => fmtSGDprecise.format(v)),
         }],
-        chartLayout(chartH),
+        chartLayout(chartH, avg),
         { displayModeBar: false, responsive: true },
       ).then((gd) => {
         gd.on("plotly_click", (ev) => {
@@ -272,7 +273,7 @@
         hovertemplate: "<b>%{y}</b><br>%{customdata}<extra></extra>",
         customdata: monthTotals.map((v) => fmtSGDprecise.format(v)),
       }],
-      chartLayout(totalH),
+      chartLayout(totalH, months.length > 1 ? grandTotal / months.length : null),
       { displayModeBar: false, responsive: true },
     ).then((gd) => {
       gd.on("plotly_click", (ev) => {
@@ -405,10 +406,13 @@
     }
   }
 
-  function chartLayout(height) {
-    return {
+  // `avg` (optional): draw a faint vertical dotted line at the per-month
+  // average with a small label above the plot. Passed only when 2+ months
+  // are selected — with one month the line just retraces the bar.
+  function chartLayout(height, avg = null) {
+    const layout = {
       height,
-      margin: { l: 62, r: 44, t: 6, b: 32 },
+      margin: { l: 62, r: 44, t: avg !== null ? 28 : 6, b: 32 },
       xaxis: {
         tickprefix: "$",
         tickformat: ",.0f",
@@ -426,6 +430,22 @@
       font: { family: "Source Sans Pro, sans-serif", size: 11 },
       bargap: 0.25,
     };
+    if (avg !== null) {
+      layout.shapes = [{
+        type: "line",
+        x0: avg, x1: avg,
+        y0: 0, y1: 1, yref: "paper",
+        line: { color: "rgba(139, 122, 106, 0.45)", width: 1, dash: "dot" },
+        layer: "above",
+      }];
+      layout.annotations = [{
+        x: avg, y: 1, yref: "paper", yanchor: "bottom",
+        showarrow: false,
+        text: `avg ${fmtSGD.format(avg)}/mo`,
+        font: { size: 12, color: "#8B7A6A" },
+      }];
+    }
+    return layout;
   }
 
   function monthLabel(iso) {
