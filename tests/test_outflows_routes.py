@@ -496,6 +496,63 @@ def test_db_edit_endpoints(app, tmp_path, monkeypatch):
     assert (tmp_path / "history" / ".git").exists()
 
 
+def test_db_history_endpoints(app, tmp_path, monkeypatch):
+    """History panel flow: list commits with change summaries, view a
+    commit's diff, roll back from the GUI route (rows revert, a
+    `restore → <sha8>` commit tops the log), and restore a restore."""
+    from abicus.apps.outflows import db, db_history
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "transactions.db")
+    db.upsert([
+        {"date": "2026-08-01", "description": "NTUC", "amount": 12.5,
+         "category": "Groceries", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+    ])
+    good_sha = db_history.log()[0]["sha8"]
+    db.update_category(db.list_rows()[0]["tx_hash"], "Dining")
+
+    c = TestClient(app)
+
+    # List: newest first, with per-commit change summaries.
+    r = c.get("/api/outflows/db/history")
+    assert r.status_code == 200, r.text
+    commits = r.json()["commits"]
+    assert [x["label"].split(" ")[0] for x in commits] == [
+        "update_category", "upsert:"
+    ]
+    assert commits[0]["summary"] == {"added": 0, "removed": 0, "changed": 1}
+    assert commits[1]["summary"] == {"added": 1, "removed": 0, "changed": 0}
+
+    # Diff: the category edit shows before/after rows.
+    r = c.get(f"/api/outflows/db/history/diff/{commits[0]['sha8']}")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["changed"][0]["before"]["category"] == "Groceries"
+    assert d["changed"][0]["after"]["category"] == "Dining"
+
+    # Bad ref syntax → 400; unknown commit → 404.
+    assert c.get("/api/outflows/db/history/diff/HEAD").status_code == 400
+    assert c.get("/api/outflows/db/history/diff/deadbeef").status_code == 404
+
+    # Roll back the edit from the GUI route.
+    r = c.post("/api/outflows/db/history/restore", json={"ref": good_sha})
+    assert r.status_code == 200, r.text
+    assert r.json() == {"restored_to": good_sha, "rows": 1}
+    assert db.list_rows()[0]["category"] == "Groceries"
+    latest = db_history.log()[0]
+    assert latest["label"] == f"restore → {good_sha}"
+
+    # Restoring a restore: go forward again to the edited state.
+    edited_sha = next(
+        e["sha8"] for e in db_history.log()
+        if e["label"].startswith("update_category")
+    )
+    r = c.post("/api/outflows/db/history/restore", json={"ref": edited_sha})
+    assert r.status_code == 200, r.text
+    assert db.list_rows()[0]["category"] == "Dining"
+    assert db_history.log()[0]["label"] == f"restore → {edited_sha}"
+
+
 def test_breakdown_transactions(app, tmp_path, monkeypatch):
     """Per-bar drill-down: a month+category query returns just that bar's
     rows; omitting category returns the whole month; bad months 400."""

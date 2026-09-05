@@ -33,6 +33,20 @@
     wireFilters();
     refreshFilterOptions();
     render();
+    loadHistory();
+  }
+
+  // Re-fetch the rows after a rollback — the DB changed underneath us.
+  async function reloadRows() {
+    let resp;
+    try {
+      resp = await api.get("/api/outflows/db/rows");
+    } catch {
+      return;
+    }
+    state.rows = resp.rows || [];
+    refreshFilterOptions();
+    render();
   }
 
   function saveUi() {
@@ -240,6 +254,7 @@
     toast(`"${row.description}" recategorised ${old} → ${category}.`, "info");
     refreshFilterOptions();
     render();
+    loadHistory();
   }
 
   async function deleteRow(row) {
@@ -255,6 +270,7 @@
     if (idx !== -1) state.rows.splice(idx, 1);
     refreshFilterOptions();
     render();
+    loadHistory();
     showUndoToast(
       `Deleted "${row.description}" (${fmtSGD.format(row.amount)}) from the database.`,
       () => restoreRow(resp.deleted, idx),
@@ -271,6 +287,7 @@
     toast(`Restored "${row.description}".`, "info");
     refreshFilterOptions();
     render();
+    loadHistory();
   }
 
   // Delete toast with an inline Undo button; longer TTL than the shared
@@ -370,6 +387,148 @@
       document.addEventListener("keydown", onMenuKeydown);
       window.addEventListener("scroll", onMenuScroll, true);
     }, 0);
+  }
+
+  // ---- History panel (V3 Feature A) ----
+  // Commit list newest-first; View changes expands an inline diff of the
+  // rows that write touched; Roll back restores the DB to that commit's
+  // state behind an explicit confirm (the server snapshots first, and the
+  // rollback lands as a new `restore → <sha8>` commit).
+
+  function fmtCommitDate(iso) {
+    return String(iso || "").slice(0, 19).replace("T", " ");
+  }
+
+  function summaryText(s) {
+    const parts = [];
+    if (s.added) parts.push(`+${s.added} added`);
+    if (s.changed) parts.push(`${s.changed} changed`);
+    if (s.removed) parts.push(`−${s.removed} removed`);
+    return parts.join(" · ") || "no row changes";
+  }
+
+  async function loadHistory() {
+    let resp;
+    try {
+      resp = await api.get("/api/outflows/db/history");
+    } catch {
+      return; // api.js already toasted the error
+    }
+    renderHistory(resp.commits || []);
+  }
+
+  function renderHistory(commits) {
+    $("hist-empty").classList.toggle("hidden", commits.length > 0);
+    const wrap = $("hist-rows");
+    wrap.innerHTML = "";
+    if (!commits.length) return;
+
+    const table = document.createElement("table");
+    table.className = "mini-table";
+    const thead = document.createElement("thead");
+    thead.innerHTML =
+      "<tr><th>Commit</th><th>Date</th><th>Operation</th>" +
+      "<th>Changes</th><th class='dbedit-actions-col'></th></tr>";
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    commits.forEach((commit, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td><code>${escapeHtml(commit.sha8)}</code></td>` +
+        `<td>${escapeHtml(fmtCommitDate(commit.date))}</td>` +
+        `<td>${escapeHtml(commit.label)}</td>` +
+        `<td>${escapeHtml(summaryText(commit.summary || {}))}</td>`;
+
+      const actionCell = document.createElement("td");
+      actionCell.className = "dbedit-actions-col";
+      const actions = document.createElement("span");
+      actions.className = "dbedit-actions";
+
+      const viewBtn = document.createElement("button");
+      viewBtn.type = "button";
+      viewBtn.className = "hist-btn";
+      viewBtn.textContent = "View changes";
+      viewBtn.addEventListener("click", () => toggleDiff(commit, tr, viewBtn));
+      actions.appendChild(viewBtn);
+
+      // The newest commit IS the current state — nothing to roll back to.
+      if (i > 0) {
+        const rollBtn = document.createElement("button");
+        rollBtn.type = "button";
+        rollBtn.className = "hist-btn hist-btn-danger";
+        rollBtn.textContent = "Roll back";
+        rollBtn.addEventListener("click", () => rollBack(commit));
+        actions.appendChild(rollBtn);
+      }
+
+      actionCell.appendChild(actions);
+      tr.appendChild(actionCell);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+
+  function diffLine(prefix, r) {
+    return `${prefix} ${r.date}  ${r.description}  ${fmtSGD.format(r.amount)}` +
+      `  [${r.category}]  ${r.account}`;
+  }
+
+  async function toggleDiff(commit, tr, btn) {
+    const existing = tr.nextElementSibling;
+    if (existing && existing.classList.contains("hist-diff-row")) {
+      existing.remove();
+      btn.textContent = "View changes";
+      return;
+    }
+    let d;
+    try {
+      d = await api.get(`/api/outflows/db/history/diff/${commit.sha8}`);
+    } catch {
+      return; // api.js already toasted the error
+    }
+    const lines = [
+      ...(d.added || []).map((r) => diffLine("+", r)),
+      ...(d.removed || []).map((r) => diffLine("−", r)),
+      ...(d.changed || []).flatMap((c) => [
+        diffLine("~", c.before), "  → " + diffLine("", c.after).trim(),
+      ]),
+    ];
+    const diffTr = document.createElement("tr");
+    diffTr.className = "hist-diff-row";
+    const td = document.createElement("td");
+    td.colSpan = 5;
+    const pre = document.createElement("pre");
+    pre.className = "hist-diff";
+    pre.textContent = lines.length ? lines.join("\n") : "No row changes.";
+    td.appendChild(pre);
+    diffTr.appendChild(td);
+    tr.after(diffTr);
+    btn.textContent = "Hide changes";
+  }
+
+  async function rollBack(commit) {
+    const ok = window.confirm(
+      "Roll the database back to this state?\n\n" +
+      `${commit.sha8} · ${fmtCommitDate(commit.date)}\n${commit.label}\n\n` +
+      "The current state is snapshotted first, so this is reversible."
+    );
+    if (!ok) return;
+    let resp;
+    try {
+      resp = await api.postJson("/api/outflows/db/history/restore", {
+        ref: commit.sha8,
+      });
+    } catch {
+      return; // api.js already toasted the error
+    }
+    toast(
+      `Rolled back to ${resp.restored_to} — ${resp.rows} rows restored.`,
+      "info",
+    );
+    await reloadRows();
+    loadHistory();
   }
 
   function escapeHtml(s) {

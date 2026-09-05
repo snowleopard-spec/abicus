@@ -15,7 +15,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from abicus.apps.outflows import db, pdf_export
+from abicus.apps.outflows import db, db_history, pdf_export
 from abicus.apps.outflows.accounts import load_accounts
 from abicus.apps.outflows.build_mapping import (
     build_mapping_if_changed,
@@ -1100,6 +1100,55 @@ def api_db_restore_row(body: DbRestoreBody):
         )
     db.restore_row(body.row)
     return {"ok": True}
+
+
+# ---- DB history (V3 Feature A) ----
+# The git-backed commit history behind every DB write. List/diff/restore
+# are thin wrappers over db_history — the same operations as the
+# scripts/outflows_history.py CLI. Lives under /db/history because the
+# bare /history/* namespace belongs to the transaction-history tab.
+
+
+class DbHistoryRestoreBody(BaseModel):
+    ref: str
+
+
+def _history_ref_errors(fn, *args):
+    """Map db_history errors to HTTP: bad ref syntax → 400, unknown
+    commit → 404, git unavailable → 500."""
+    try:
+        return fn(*args)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except subprocess.CalledProcessError:
+        raise HTTPException(status_code=404, detail="Unknown commit — reload the page.")
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="git is not available on PATH.")
+
+
+@api_router.get("/db/history")
+def api_db_history():
+    """Commit log, newest first, each with a rows added/changed/removed
+    summary for the History panel."""
+    commits = db_history.log()
+    for c in commits:
+        c["summary"] = _history_ref_errors(db_history.diff_counts, c["sha"])
+    return {"commits": commits}
+
+
+@api_router.get("/db/history/diff/{ref}")
+def api_db_history_diff(ref: str):
+    """What one commit changed, as readable rows (added/removed/changed)."""
+    return _history_ref_errors(db_history.diff, ref)
+
+
+@api_router.post("/db/history/restore")
+def api_db_history_restore(body: DbHistoryRestoreBody):
+    """Roll the DB back to a commit's state. The current state is
+    snapshotted first and the rollback lands as a `restore → <sha8>`
+    commit, so history stays linear and every rollback is reversible.
+    The frontend guards this with a confirm dialog."""
+    return _history_ref_errors(db_history.restore, body.ref)
 
 
 class BreakdownPdfBody(BaseModel):

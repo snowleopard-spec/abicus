@@ -71,6 +71,51 @@
   border-color: var(--border-strong);
 }
 
+/* ---------- History panel ---------- */
+
+/* Pill buttons (View changes / Roll back) — text-sized, not circles. */
+.hist-btn {
+  padding: 0.12rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hist-btn:hover {
+  background: var(--bg-active);
+  border-color: var(--border-strong);
+}
+.hist-btn-danger {
+  background: #F7E6E3;
+  border-color: #D6A29A;
+  color: #A04437;
+}
+.hist-btn-danger:hover {
+  background: #F2D6D1;
+  border-color: #C07A6E;
+  color: #86372C;
+}
+
+/* History rows: wider action cell than the E/× pair. */
+#hist-rows td:last-child { width: 12.5rem; }
+#hist-rows { max-height: 24rem; }
+
+/* Inline per-commit diff under its row. */
+.hist-diff-row td { padding: 0; }
+.hist-diff {
+  margin: 0;
+  padding: 0.5rem 0.9rem;
+  background: var(--surface-alt);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+
 .table-filters input[type="date"] {
   font-family: inherit;
   font-size: 0.95rem;

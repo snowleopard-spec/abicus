@@ -52,6 +52,21 @@
     The database is empty. Commit a session from Spending Review first.
   </div>
 </section>
+
+<section class="card">
+  <h2>History</h2>
+  <p class="caption" style="margin-top:0;">
+    Every database write is recorded as a commit in a local-only history
+    (<code>data/history/</code>). <strong>View changes</strong> shows the
+    rows a write touched; <strong>Roll back</strong> restores the database
+    to that commit's state — the current state is snapshotted first, so a
+    rollback is itself reversible.
+  </p>
+  <div id="hist-rows" class="mini-table-wrap"></div>
+  <div id="hist-empty" class="banner banner-info hidden">
+    No history yet — the first database write creates it.
+  </div>
+</section>
 {% endblock %}
 
 {% block scripts %}

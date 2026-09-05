@@ -229,6 +229,35 @@ def diff(
     }
 
 
+_INS_RE = re.compile(r"^([+-])INSERT INTO transactions VALUES\('([0-9a-f]{64})'")
+
+
+def diff_counts(
+    ref: str,
+    history_dir: Path | None = None,
+    db_path: Path | None = None,
+) -> dict:
+    """Cheap change summary for the History panel's commit list — counts
+    rows added/removed/changed from the row-per-line text diff, one git
+    call, no DB rebuild (diff() rebuilds both states and is per-commit)."""
+    _, history_dir = _default_paths(db_path, history_dir)
+    out = _git(
+        history_dir, "show", "--format=", "--unified=0", "--no-color",
+        _check_ref(ref), "--", DUMP_NAME,
+    ).stdout
+    plus: set[str] = set()
+    minus: set[str] = set()
+    for line in out.splitlines():
+        m = _INS_RE.match(line)
+        if m:
+            (plus if m.group(1) == "+" else minus).add(m.group(2))
+    return {
+        "added": len(plus - minus),
+        "removed": len(minus - plus),
+        "changed": len(plus & minus),
+    }
+
+
 def restore(
     ref: str,
     db_path: Path | None = None,
