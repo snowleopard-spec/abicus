@@ -481,6 +481,20 @@ def test_db_edit_endpoints(app, tmp_path, monkeypatch):
     r = c.post("/api/outflows/db/restore-row", json={"row": {"tx_hash": "x"}})
     assert r.status_code == 400
 
+    # Every write above landed one labelled commit in the history repo,
+    # in operation order (newest first); the failed edits committed nothing.
+    from abicus.apps.outflows import db_history
+
+    h8 = ntuc["tx_hash"][:8]
+    labels = [e["label"] for e in db_history.log()]
+    assert labels == [
+        f"restore_row {h8}",
+        f"delete_row {h8}",
+        f"update_category {h8}: → Dining",
+        "upsert: +2 inserted, 0 updated (total 2)",
+    ]
+    assert (tmp_path / "history" / ".git").exists()
+
 
 def test_breakdown_transactions(app, tmp_path, monkeypatch):
     """Per-bar drill-down: a month+category query returns just that bar's

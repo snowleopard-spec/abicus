@@ -155,7 +155,10 @@ def test_restore_round_trips(monkeypatch, tmp_path):
 
     labels = [e["label"] for e in db_history.log()]
     assert labels[0] == f"restore → {good_sha}"
-    assert "pre-restore snapshot" in labels
+    # No "pre-restore snapshot" commit here: clear()'s own hook had already
+    # recorded the empty state, so the snapshot was a no-op — the
+    # pre-operation state is simply the previous commit.
+    assert labels[1] == "clear: 2 deleted"
 
     # Restoring a restore works: go back to the empty state.
     empty_sha = next(
@@ -164,3 +167,28 @@ def test_restore_round_trips(monkeypatch, tmp_path):
     result = db_history.restore(empty_sha)
     assert result["rows"] == 0
     assert db.list_rows() == []
+
+
+def test_restore_snapshots_unrecorded_state_first(monkeypatch, tmp_path):
+    """If the live DB has drifted from the last commit (e.g. a checkpoint
+    failed earlier), restore records that state as `pre-restore snapshot`
+    before touching anything — a restore is always reversible."""
+    db_path, _ = _seed(monkeypatch, tmp_path, [ROW_A])
+    db_history.checkpoint("good state")
+    good_sha = db_history.log()[0]["sha8"]
+
+    # Unrecorded drift: mutate directly, no checkpoint.
+    conn = sqlite3.connect(db_path)
+    conn.execute("UPDATE transactions SET amount = 999.0")
+    conn.commit()
+    conn.close()
+
+    db_history.restore(good_sha)
+    labels = [e["label"] for e in db_history.log()]
+    assert labels[:2] == [f"restore → {good_sha}", "pre-restore snapshot"]
+    assert db.list_rows()[0]["amount"] == 12.5
+
+    # And the drifted state is itself restorable.
+    snap_sha = db_history.log()[1]["sha8"]
+    db_history.restore(snap_sha)
+    assert db.list_rows()[0]["amount"] == 999.0

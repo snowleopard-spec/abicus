@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
+from . import db_history
+
 DB_PATH = Path(__file__).parent / "data" / "transactions.db"
 
 SCHEMA = """
@@ -102,6 +104,11 @@ def upsert(rows: Iterable[dict]) -> dict:
             else:
                 updated += 1
         total = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+    if inserted or updated:
+        db_history.checkpoint(
+            f"upsert: +{inserted} inserted, {updated} updated (total {total})",
+            db_path=DB_PATH,
+        )
     return {"inserted": inserted, "updated": updated, "total_in_db": int(total)}
 
 
@@ -113,6 +120,8 @@ def clear() -> dict:
     with _connect() as conn:
         n = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
         conn.execute("DELETE FROM transactions")
+    if n:
+        db_history.checkpoint(f"clear: {n} deleted", db_path=DB_PATH)
     return {"deleted": int(n)}
 
 
@@ -143,7 +152,12 @@ def update_category(tx_hash: str, category: str) -> bool:
             "UPDATE transactions SET category = ? WHERE tx_hash = ?",
             (category, tx_hash),
         )
-        return cur.rowcount > 0
+        changed = cur.rowcount > 0
+    if changed:
+        db_history.checkpoint(
+            f"update_category {tx_hash[:8]}: → {category}", db_path=DB_PATH
+        )
+    return changed
 
 
 def delete_row(tx_hash: str) -> dict | None:
@@ -157,6 +171,7 @@ def delete_row(tx_hash: str) -> dict | None:
         if row is None:
             return None
         conn.execute("DELETE FROM transactions WHERE tx_hash = ?", (tx_hash,))
+    db_history.checkpoint(f"delete_row {tx_hash[:8]}", db_path=DB_PATH)
     return dict(row)
 
 
@@ -170,6 +185,9 @@ def restore_row(row: dict) -> None:
                 VALUES ({", ".join("?" * len(ROW_COLS))})""",
             tuple(row.get(c) for c in ROW_COLS),
         )
+    db_history.checkpoint(
+        f"restore_row {str(row.get('tx_hash', ''))[:8]}", db_path=DB_PATH
+    )
 
 
 def load_description_categories() -> list[tuple[str, str]]:
