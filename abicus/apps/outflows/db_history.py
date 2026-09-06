@@ -103,6 +103,38 @@ def _ensure_repo(history_dir: Path) -> None:
     _git(history_dir, "commit", "--allow-empty", "--quiet", "-m", "init")
 
 
+def ensure_baseline(
+    db_path: Path | None = None,
+    history_dir: Path | None = None,
+) -> bool:
+    """Called BEFORE a write. If the history repo doesn't exist yet but the
+    DB already has rows, record that pre-write state as a baseline commit —
+    otherwise the first operation's commit would diff against nothing and
+    claim the whole existing table as its own change. No-op (one cheap
+    .git existence check) once the repo exists. Never raises (R5)."""
+    db_path, history_dir = _default_paths(db_path, history_dir)
+    if (history_dir / ".git").exists() or not Path(db_path).exists():
+        return False
+    try:
+        conn = sqlite3.connect(db_path)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+        except sqlite3.OperationalError:  # no transactions table yet
+            n = 0
+        finally:
+            conn.close()
+        if not n:
+            return False  # nothing pre-existing to protect
+        return checkpoint(
+            f"baseline: {n} existing rows recorded", db_path, history_dir
+        )
+    except (OSError, sqlite3.Error) as e:
+        logger.warning(
+            "DB HISTORY BASELINE FAILED: %s — continuing without baseline", e
+        )
+        return False
+
+
 def checkpoint(
     label: str,
     db_path: Path | None = None,

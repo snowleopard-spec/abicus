@@ -452,7 +452,8 @@
       viewBtn.addEventListener("click", () => toggleDiff(commit, tr, viewBtn));
       actions.appendChild(viewBtn);
 
-      // The newest commit IS the current state — nothing to roll back to.
+      // The newest commit IS the current state — say so instead of
+      // offering a no-op Roll back.
       if (i > 0) {
         const rollBtn = document.createElement("button");
         rollBtn.type = "button";
@@ -460,6 +461,12 @@
         rollBtn.textContent = "Roll back";
         rollBtn.addEventListener("click", () => rollBack(commit));
         actions.appendChild(rollBtn);
+      } else {
+        const tag = document.createElement("span");
+        tag.className = "hist-current";
+        tag.textContent = "current";
+        tag.title = "This commit is the database's current state.";
+        actions.appendChild(tag);
       }
 
       actionCell.appendChild(actions);

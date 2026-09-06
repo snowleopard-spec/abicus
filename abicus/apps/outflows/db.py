@@ -66,6 +66,7 @@ def upsert(rows: Iterable[dict]) -> dict:
 
     Returns {"inserted": N, "updated": M, "total_in_db": T}.
     """
+    db_history.ensure_baseline(db_path=DB_PATH)
     now = datetime.utcnow().isoformat(timespec="seconds")
     inserted = updated = 0
     occ_seen: dict[tuple, int] = {}
@@ -117,6 +118,7 @@ def clear() -> dict:
     next commit doesn't need to re-init. Returns {"deleted": N}."""
     if not DB_PATH.exists():
         return {"deleted": 0}
+    db_history.ensure_baseline(db_path=DB_PATH)
     with _connect() as conn:
         n = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
         conn.execute("DELETE FROM transactions")
@@ -147,6 +149,7 @@ def list_rows() -> list[dict]:
 def update_category(tx_hash: str, category: str) -> bool:
     """Set one row's category in place. Returns False if the hash is gone
     (e.g. the row was deleted from another tab)."""
+    db_history.ensure_baseline(db_path=DB_PATH)
     with _connect() as conn:
         cur = conn.execute(
             "UPDATE transactions SET category = ? WHERE tx_hash = ?",
@@ -163,6 +166,7 @@ def update_category(tx_hash: str, category: str) -> bool:
 def delete_row(tx_hash: str) -> dict | None:
     """Delete one row, returning its full content so the client can offer
     an undo. Returns None if the hash doesn't exist."""
+    db_history.ensure_baseline(db_path=DB_PATH)
     with _connect() as conn:
         row = conn.execute(
             f"SELECT {', '.join(ROW_COLS)} FROM transactions WHERE tx_hash = ?",
@@ -178,6 +182,7 @@ def delete_row(tx_hash: str) -> dict | None:
 def restore_row(row: dict) -> None:
     """Re-insert a row previously returned by delete_row (undo). Keyed on
     the original tx_hash, so restoring twice is a no-op overwrite."""
+    db_history.ensure_baseline(db_path=DB_PATH)
     with _connect() as conn:
         conn.execute(
             f"""INSERT OR REPLACE INTO transactions

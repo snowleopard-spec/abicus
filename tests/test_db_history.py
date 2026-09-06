@@ -169,6 +169,41 @@ def test_restore_round_trips(monkeypatch, tmp_path):
     assert db.list_rows() == []
 
 
+def test_first_write_on_existing_db_gets_a_baseline(monkeypatch, tmp_path):
+    """A DB that predates the history layer: the first hooked write records
+    the pre-write state as a baseline commit, so the operation's own commit
+    diffs to just what it changed — not the whole existing table."""
+    _seed(monkeypatch, tmp_path, [ROW_A, ROW_B])  # existing DB, no repo yet
+
+    db.update_category(ROW_A["tx_hash"], "Dining")
+
+    entries = db_history.log()
+    assert [e["label"] for e in entries] == [
+        f"update_category {ROW_A['tx_hash'][:8]}: → Dining",
+        "baseline: 2 existing rows recorded",
+    ]
+    d = db_history.diff(entries[0]["sha"])
+    assert d["added"] == [] and d["removed"] == []
+    assert len(d["changed"]) == 1  # only the edited row, not the corpus
+
+    # And rolling back to the baseline undoes the edit.
+    db_history.restore(entries[1]["sha8"])
+    assert db.list_rows()[1]["category"] == "Groceries"
+
+
+def test_no_baseline_for_fresh_or_empty_db(monkeypatch, tmp_path):
+    """A brand-new DB has nothing pre-existing to protect: the first
+    upsert's commit is the first entry, no baseline."""
+    _seed(monkeypatch, tmp_path)
+    db.upsert([{k: ROW_A[k] for k in (
+        "date", "description", "amount", "category", "account",
+        "matched_pattern", "source_file",
+    )}])
+    assert [e["label"] for e in db_history.log()] == [
+        "upsert: +1 inserted, 0 updated (total 1)"
+    ]
+
+
 def test_restore_snapshots_unrecorded_state_first(monkeypatch, tmp_path):
     """If the live DB has drifted from the last commit (e.g. a checkpoint
     failed earlier), restore records that state as `pre-restore snapshot`

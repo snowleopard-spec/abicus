@@ -100,6 +100,18 @@
   color: #86372C;
 }
 
+/* "current" tag on the newest commit (the live DB state). */
+.hist-current {
+  padding: 0.12rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary, #6B6156);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* History rows: wider action cell than the E/× pair. */
 #hist-rows td:last-child { width: 12.5rem; }
 #hist-rows { max-height: 24rem; }
