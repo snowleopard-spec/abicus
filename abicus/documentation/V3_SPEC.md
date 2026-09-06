@@ -87,9 +87,13 @@ would still be the right shape.
 - No auto-apply of guesses (R8).
 - assets, claims and mortgage are untouched. `mediclaim.db` gets no history
   layer in V3 (R1).
-- No fine-tuning required for "done" — Milestone 10 is stretch only. (The
-  DB Edit History panel is NOT stretch — GUI rollback is a required V3
-  deliverable, M4.)
+- No model training or fine-tuning anywhere in V3 — bge-small is used off
+  the shelf. *(Decision 2026-09-06: the former stretch milestone M10 — a
+  fine-tune of bge-small with a classification head, itself revised from
+  bert-base-uncased earlier the same day — is removed entirely. The
+  PyTorch-training ambition moves to Kiln, where it was headed anyway.)*
+  (The DB Edit History panel is NOT stretch — GUI rollback is a required
+  V3 deliverable, M4.)
 - No re-engineering of the rapidfuzz engine; it is the incumbent and the
   baseline.
 
@@ -231,25 +235,9 @@ Verify each "Done when" before continuing. One milestone per session.
   (Feature A + B, calibration numbers, M3 restore drill note), this spec's
   status line flipped to implemented. **Done when:** notes and tag match
   the shipped state.
-- **M10 — STRETCH (optional, may be deferred indefinitely without failing
-  V3).** Fine-tune **`bge-small` itself** with a classification head
-  (categories as labels; bge-small is a BERT architecture, so this is the
-  canonical `*ForSequenceClassification` fine-tune with a different
-  checkpoint name) over the corpus — the PyTorch training warm-up for
-  Kiln; minutes on the Mac (MPS/CPU) at this data size.
-  *(Decision 2026-09-06, supersedes the original `bert-base-uncased`
-  choice: holding the model constant isolates the variable that matters —
-  does teaching bge-small my categories beat using it frozen? — and the
-  33M-weight model trains faster with no second 440 MB download.
-  A SetFit-style contrastive fine-tune that reshapes the embedding space
-  and drops into the shipped NN engine is the noted alternative if a
-  second experiment ever follows.)* The fine-tuned weights are saved as a
-  **new checkpoint in their own directory** — the shipped engine's frozen
-  bge-small stays untouched, so the toggle comparison stays honest.
-  Compare leave-one-out against both shipped engines; at ~700 examples a
-  fine-tune may lose to the frozen model — that's a finding, not a
-  failure. **Done when (if attempted):** the comparison table is
-  recorded here.
+- ~~**M10 — STRETCH: fine-tune.**~~ *Removed 2026-09-06 — V3 ships with
+  no model training; bge-small is used off the shelf (see §3 Non-goals).
+  V3 ends at M9.*
 
 ## 7. Acceptance checklist (V3 done)
 
