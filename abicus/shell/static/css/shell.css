@@ -56,11 +56,16 @@ a:hover { color: var(--accent-hover); }
 /* ------- Top bar (brand + app tabs) ------- */
 /* No chrome: the app tabs float directly on the background. */
 .topbar {
+  position: relative; /* anchors the version chip at the right edge */
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-4) var(--space-6) var(--space-3);
   background: transparent;
+}
+.topbar .version-chip {
+  position: absolute;
+  right: var(--space-6);
 }
 /* ------- Pill tabs (shared: app tabs + in-app page tabs) ------- */
 .pill-tabs {

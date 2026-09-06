@@ -17,6 +17,8 @@ def test_each_subapp_serves_html(app):
         assert "<html" in body
         # active state is wired through to the body tag
         assert f'data-active="{name}"' in body
+        # version chip renders on every page (V3.1 R5)
+        assert 'class="version-chip">v' in body
 
 
 def test_each_subapp_config_endpoint(app):
