@@ -290,6 +290,24 @@ def diff_counts(
     }
 
 
+def row_count(
+    ref: str,
+    history_dir: Path | None = None,
+    db_path: Path | None = None,
+) -> int:
+    """Total rows in the DB as of commit `ref` — counted with `git grep`
+    over the dump blob so the full dump text never leaves git."""
+    _, history_dir = _default_paths(db_path, history_dir)
+    p = subprocess.run(
+        ["git", "-C", str(history_dir), "grep", "-c",
+         "^INSERT INTO transactions", _check_ref(ref), "--", DUMP_NAME],
+        capture_output=True, text=True,
+    )
+    if p.returncode == 0:  # "sha:transactions.sql:1496"
+        return int(p.stdout.strip().rsplit(":", 1)[1])
+    return 0  # no matches (empty table) or no dump in this commit
+
+
 def restore(
     ref: str,
     db_path: Path | None = None,

@@ -1133,6 +1133,7 @@ def api_db_history():
     commits = db_history.log()
     for c in commits:
         c["summary"] = _history_ref_errors(db_history.diff_counts, c["sha"])
+        c["rows"] = _history_ref_errors(db_history.row_count, c["sha"])
     return {"commits": commits}
 
 

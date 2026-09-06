@@ -522,6 +522,7 @@ def test_db_history_endpoints(app, tmp_path, monkeypatch):
     ]
     assert commits[0]["summary"] == {"added": 0, "removed": 0, "changed": 1}
     assert commits[1]["summary"] == {"added": 1, "removed": 0, "changed": 0}
+    assert [x["rows"] for x in commits] == [1, 1]  # DB size at each commit
 
     # Diff: the category edit shows before/after rows.
     r = c.get(f"/api/outflows/db/history/diff/{commits[0]['sha8']}")

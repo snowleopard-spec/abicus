@@ -112,6 +112,13 @@
   white-space: nowrap;
 }
 
+#hist-rows th.hist-rowcount,
+#hist-rows td.hist-rowcount {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* History rows: wider action cell than the E/× pair. */
 #hist-rows td:last-child { width: 12.5rem; }
 #hist-rows { max-height: 24rem; }

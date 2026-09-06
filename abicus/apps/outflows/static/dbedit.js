@@ -428,7 +428,8 @@
     const thead = document.createElement("thead");
     thead.innerHTML =
       "<tr><th>Commit</th><th>Date</th><th>Operation</th>" +
-      "<th>Changes</th><th class='dbedit-actions-col'></th></tr>";
+      "<th>Changes</th><th class='hist-rowcount'>Rows</th>" +
+      "<th class='dbedit-actions-col'></th></tr>";
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
@@ -438,7 +439,8 @@
         `<td><code>${escapeHtml(commit.sha8)}</code></td>` +
         `<td>${escapeHtml(fmtCommitDate(commit.date))}</td>` +
         `<td>${escapeHtml(commit.label)}</td>` +
-        `<td>${escapeHtml(summaryText(commit.summary || {}))}</td>`;
+        `<td>${escapeHtml(summaryText(commit.summary || {}))}</td>` +
+        `<td class="hist-rowcount">${Number(commit.rows ?? 0)}</td>`;
 
       const actionCell = document.createElement("td");
       actionCell.className = "dbedit-actions-col";
@@ -505,7 +507,7 @@
     const diffTr = document.createElement("tr");
     diffTr.className = "hist-diff-row";
     const td = document.createElement("td");
-    td.colSpan = 5;
+    td.colSpan = 6;
     const pre = document.createElement("pre");
     pre.className = "hist-diff";
     pre.textContent = lines.length ? lines.join("\n") : "No row changes.";
