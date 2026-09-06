@@ -9,3 +9,4 @@ __pycache__/
 .claude/
 Aux/
 abicus/apps/*/artifacts/
+*.egg-info/
