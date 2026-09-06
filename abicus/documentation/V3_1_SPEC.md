@@ -1,7 +1,9 @@
 # Spec — Abicus V3.1: defects + the safety net
 
-> **Status: not started** · Drafted 2026-09-06 · Target version **3.1.0**
-> (current: 3.0.0). Build contract in the house style: resolved
+> **Status: implemented — released as 3.1.0, 2026-09-06.** One defect
+> beyond the planned four was discovered during M5 and fixed in the
+> same release: blank mapping values were read back as NaN and slipped
+> past the parsers' blank guard (see release notes). Build contract in the house style: resolved
 > decisions up front, then numbered verify-before-continue milestones,
 > each sized to one ~15-minute session and ending with the app usable.
 > Do not start a milestone before the previous one's "Done when" line
