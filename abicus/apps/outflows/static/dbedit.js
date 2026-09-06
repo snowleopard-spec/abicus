@@ -90,6 +90,20 @@
       state.filter.to = e.target.value;
       saveUi(); render();
     });
+    $("db-backup-btn").addEventListener("click", backupDb);
+  }
+
+  async function backupDb() {
+    let resp;
+    try {
+      resp = await api.postJson("/api/outflows/db/backup", {});
+    } catch {
+      return; // api.js already toasted the error
+    }
+    const kb = Math.max(1, Math.round(resp.bytes / 1024));
+    toast(
+      `Backup saved: ${resp.file} (${resp.rows} rows, ${kb} KB).`, "info",
+    );
   }
 
   // Dropdown options come from the values actually in the DB, "All" first,

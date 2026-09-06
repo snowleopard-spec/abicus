@@ -195,6 +195,24 @@ def restore_row(row: dict) -> None:
     )
 
 
+def backup() -> dict:
+    """Snapshot the live DB into data/backups/transactions_<stamp>.db using
+    SQLite's online backup API (consistent even mid-write, unlike a file
+    copy). Returns {"file": name, "rows": N, "bytes": size}."""
+    backups_dir = DB_PATH.parent / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    dest_path = backups_dir / f"transactions_{stamp}.db"
+    with _connect() as src, sqlite3.connect(dest_path) as dest:
+        src.backup(dest)
+        n = dest.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+    return {
+        "file": dest_path.name,
+        "rows": int(n),
+        "bytes": dest_path.stat().st_size,
+    }
+
+
 def load_description_categories() -> list[tuple[str, str]]:
     """Distinct (description, category) pairs for the guess feature.
     Where a description was committed under more than one category over

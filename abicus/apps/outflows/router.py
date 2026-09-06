@@ -1102,6 +1102,13 @@ def api_db_restore_row(body: DbRestoreBody):
     return {"ok": True}
 
 
+@api_router.post("/db/backup")
+def api_db_backup():
+    """Snapshot transactions.db into data/backups/ — a plain .db file,
+    independent of the git history layer."""
+    return db.backup()
+
+
 # ---- DB history (V3 Feature A) ----
 # The git-backed commit history behind every DB write. List/diff/restore
 # are thin wrappers over db_history — the same operations as the

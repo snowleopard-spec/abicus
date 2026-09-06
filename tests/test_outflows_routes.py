@@ -496,6 +496,32 @@ def test_db_edit_endpoints(app, tmp_path, monkeypatch):
     assert (tmp_path / "history" / ".git").exists()
 
 
+def test_db_backup_endpoint(app, tmp_path, monkeypatch):
+    """POST /db/backup writes a readable snapshot into data/backups/."""
+    import sqlite3
+
+    from abicus.apps.outflows import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "transactions.db")
+    db.upsert([
+        {"date": "2026-08-01", "description": "NTUC", "amount": 12.5,
+         "category": "Groceries", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+    ])
+
+    c = TestClient(app)
+    r = c.post("/api/outflows/db/backup")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["rows"] == 1 and body["bytes"] > 0
+    snap = tmp_path / "backups" / body["file"]
+    assert snap.exists()
+    rows = sqlite3.connect(snap).execute(
+        "SELECT description FROM transactions"
+    ).fetchall()
+    assert rows == [("NTUC",)]
+
+
 def test_db_history_endpoints(app, tmp_path, monkeypatch):
     """History panel flow: list commits with change summaries, view a
     commit's diff, roll back from the GUI route (rows revert, a

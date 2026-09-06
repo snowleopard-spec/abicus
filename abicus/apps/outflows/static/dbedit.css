@@ -100,6 +100,13 @@
   color: #86372C;
 }
 
+/* Back up DB button sits at the end of the filter row. */
+.table-filters .db-backup-btn {
+  margin-left: auto;
+  align-self: flex-end;
+  margin-bottom: 0.3rem;
+}
+
 /* "current" tag on the newest commit (the live DB state). */
 .hist-current {
   padding: 0.12rem 0.6rem;
