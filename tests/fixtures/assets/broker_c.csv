@@ -1,0 +1,10 @@
+Statement,Header,Fabricated Broker C Export
+Statement,Data,Title,Fabricated Activity Statement
+Statement,Data,Period,"February 1, 2026 - February 28, 2026"
+Positions and Mark-to-Market Profit and Loss,Header,Section,Field Value,Currency,Symbol,Description,Prior Quantity,Current Quantity,Prior Price,Current Price,Prior Value,Current Value,Code
+Positions and Mark-to-Market Profit and Loss,Data,Summary,Forex,USD,EUR,EUR,,5000,,,,5500,
+Positions and Mark-to-Market Profit and Loss,Data,Summary,Stocks,USD,FAKE,Fabricated Stock Corp,,10,,,,2500,
+Positions and Mark-to-Market Profit and Loss,Data,Summary,Funds,GBP,FAKE.L,Fabricated Fund A,,100,,,,750,
+Positions and Mark-to-Market Profit and Loss,Data,Detail,Stocks,USD,FAKE,Fabricated Stock Corp,,10,,,,2500,
+Other Section,Data,Summary,Stocks,USD,FAKE2,Fabricated Decoy Corp,,5,,,,9999,
+Statement,Footer,Generated,Fabricated

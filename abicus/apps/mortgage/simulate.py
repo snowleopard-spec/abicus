@@ -48,12 +48,22 @@ def next_month(y: int, m: int) -> tuple[int, int]:
 
 
 def simulate_state(as_of: date, loan: Loan) -> dict:
+    if as_of < loan.origin_date:
+        raise ValueError(
+            f"as_of {as_of.isoformat()} predates loan origin "
+            f"{loan.origin_date.isoformat()}"
+        )
+
     principal = loan.origin_principal
     prev_pmt_date = loan.origin_date
     y, m = loan.origin_date.year, loan.origin_date.month
     last_payment = None
 
-    while True:
+    # Safety: cap iterations to 2× the original tenor (mirrors
+    # generate_schedule) so negative amortisation cannot hang.
+    max_iters = (loan.original_tenor_months or 360) * 2
+
+    for _ in range(max_iters):
         y, m = next_month(y, m)
         pmt_date = adjusted_payment_date(y, m, loan.payment_day_of_month)
         days_full_period = (pmt_date - prev_pmt_date).days
@@ -106,6 +116,24 @@ def simulate_state(as_of: date, loan: Loan) -> dict:
                 "days_since_last_payment": 0,
                 "paid_off": True,
             }
+
+    # Iteration cap hit (negative amortisation): report the state as of
+    # the last simulated payment instead of looping forever.
+    days_accrued = (as_of - prev_pmt_date).days
+    accrued = q(
+        principal * loan.annual_rate * Decimal(days_accrued) / Decimal(365)
+    )
+    y, m = next_month(y, m)
+    return {
+        "principal": principal,
+        "accrued_interest": accrued,
+        "remaining_loan": q(principal + accrued),
+        "next_payment_date": adjusted_payment_date(y, m, loan.payment_day_of_month),
+        "next_payment_amount": loan.monthly_payment,
+        "last_payment": last_payment,
+        "days_since_last_payment": days_accrued,
+        "paid_off": False,
+    }
 
 
 def generate_schedule(loan: Loan, up_to: date | None = None) -> dict:

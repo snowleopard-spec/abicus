@@ -1,0 +1,7 @@
+Asset Name,Asset Class,Currency,Institution,Account Type,Jurisdiction,Beneficiary,Balance (Local),US Situs Flag,Auto Calc,Units,Ticker,Tag
+Fabricated Auto Upper,Single Stock,USD,Fabricated Bank,Brokerage,SG,Fabricated Person,111,N,TRUE,10,FAKE1,tag-a
+Fabricated Auto Lower,Single Stock,USD,Fabricated Bank,Brokerage,SG,Fabricated Person,222,N,true,20,FAKE2,tag-b
+Fabricated Not Auto One,Fabricated Fund,USD,Fabricated Bank,Brokerage,SG,Fabricated Person,333,N,1,30,FAKE3,tag-c
+Fabricated Not Auto Wye,Fabricated Fund,USD,Fabricated Bank,Brokerage,SG,Fabricated Person,444,N,Y,40,FAKE4,tag-d
+Fabricated Not Auto Yes,Fabricated Fund,USD,Fabricated Bank,Brokerage,SG,Fabricated Person,555,N,yes,50,FAKE5,tag-e
+Fabricated Static Cash,Cash,USD,Fabricated Bank,Savings,SG,Fabricated Person,666,N,FALSE,,,tag-f

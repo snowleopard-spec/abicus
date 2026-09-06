@@ -228,7 +228,9 @@ def api_download_pdf(session_id: str, opts: DownloadOptions) -> Response:
 
 
 @api_router.post("/download/excel/{session_id}")
-def api_download_excel(session_id: str, opts: DownloadOptions | None = None) -> Response:
+def api_download_excel(session_id: str) -> Response:
+    # Deliberately no DownloadOptions: Excel is always the full unfiltered
+    # master (ARCHITECTURE.md A-29 / V3.1 R4). The PDF endpoint keeps them.
     session = _session_or_404(session_id)
     master = session["master"]
     cols = [c for c in pipeline.DISPLAY_COLS if c in master.columns]

@@ -4,6 +4,44 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ---
 
+## 3.1.0 — 2026-09-06
+
+Defects + the safety net (documentation/V3_1_SPEC.md): the fixes and
+tests that came out of the 2026-09-06 code reviews and the writing of
+`ARCHITECTURE.md`. No new features; every fix pins an ARCHITECTURE.md
+invariant with a test (spec R7).
+
+*Defects fixed.* **Assets:** `.L` (London) stock prices are now stored
+as raw pence quotes and converted to pounds only at the point of use —
+previously a save → reload → recompile divided by 100 twice. Blank
+mapping values written by "add unmapped to mappings" now survive the
+config round trip as `""` (a default CSV read turned them into NaN,
+which slipped past the blank guard and produced the literal asset
+class "nan" — discovered while writing the A-1 fixture test). The
+Excel download no longer accepts view options it always ignored.
+**Mortgage:** an `as_of` before the loan's origination date returns a
+400 (it used to produce negative accrued interest), and the state
+simulation carries the same 2×-tenor iteration cap as the schedule, so
+a negative-amortisation configuration can no longer hang the request.
+**Claims:** the API now enforces what the UI always assumed — claims
+are SGD-only; other currencies are rejected with a 400 instead of
+silently mis-summing in the headline totals. **Shell:** the version
+chip (`v3.1.0 · <sha>`) — computed since the consolidation but never
+rendered — now shows in the top bar on every page.
+
+*The safety net.* 32 new tests: mortgage logic (weekend forward-shift,
+first-payment month, final-payment trim, paid-off shape, a
+hand-computed Actual/365 accrual in Decimal), claims logic (the
+six-string status cascade, the outstanding clamp incl. over-rebates,
+the `toggle_flag` injection whitelist, invoice filename building and
+collision suffixes, archive-vs-permanent delete), and fixture-driven
+assets parser tests over fabricated files (Broker A latest-date-wins
+and hard-coded-class precedence, Broker C positional columns and the
+forex no-reconvert rule, manual-template Auto-Calc matching and
+resolver degradation). Suite: 55 → 94 tests since 3.0.0.
+
+---
+
 ## 3.0.0 — 2026-09-06
 
 The V3 release (documentation/V3_SPEC.md): a git-backed commit history

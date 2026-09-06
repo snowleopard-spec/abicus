@@ -243,6 +243,11 @@ history. `/load` restores it into a fresh session.
   unmapped. `append_unmapped_to_mappings` deliberately writes
   blank-valued CSV rows for the user to fill in; never coerce blank →
   NaN or that round-trip breaks (`parsers/broker_a.py`, `pipeline.py`).
+  Since V3.1, `load_config` reads the two mapping CSVs with
+  `na_filter=False` precisely to keep blanks as `""` — a default read
+  turned them into NaN, whose `str()` is the truthy `"nan"`, producing
+  the literal asset class "nan" instead of UNMAPPED (regression-tested
+  in `test_assets_parsers.py`).
 - **Hard-coded classification beats the CSV mapping**: cash/forex →
   `"Cash"`, stock rows → `"Single Stock"`, only then the CSV, then
   `UNMAPPED`. A CSV row cannot override cash or single-stock. Cash is

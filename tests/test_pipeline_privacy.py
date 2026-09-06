@@ -161,3 +161,38 @@ def test_lse_price_conversion_from_pence_preserved(config):
     )
     row = result["master"].iloc[0]
     assert row["Balance (Local)"] == pytest.approx(10 * 42.0)  # pounds
+
+
+def test_lse_price_round_trip_divides_exactly_once(config):
+    """# A-13 / V3.1 R1: stored prices are RAW quotes (pence for .L).
+    compile → persist fetched_prices → recompile from them must divide by
+    100 exactly once per pass, not twice — the save/reload hazard."""
+    def lse_buf():
+        csv = (
+            "Asset Name,Asset Class,Currency,Institution,Account Type,"
+            "Jurisdiction,Beneficiary,Balance (Local),US Situs Flag,"
+            "Auto Calc,Units,Ticker,Tag\n"
+            "Fabricated Fund L,ETF,GBP,Broker,Brokerage,UK,W,,N,TRUE,10,FAKE.L,\n"
+        )
+        buf = io.BytesIO(csv.encode())
+        buf.name = "manual.csv"
+        return buf
+
+    first = pipeline.compile_master(
+        [("manual.csv", lse_buf(), "Manual Upload")],
+        config, rates=VALID_FX, fx_error=False,
+        live_prices=False, cached_prices={"FAKE.L": 4200.0},  # raw pence
+    )
+    # The persisted price stays the raw quote, never the converted pounds.
+    assert first["fetched_prices"] == {"FAKE.L": 4200.0}
+    assert first["master"].iloc[0]["Balance (Local)"] == pytest.approx(420.0)
+
+    # Second pass fed from the first pass's persisted prices — what /save
+    # then /load then recompile does. Same balance, no double division.
+    second = pipeline.compile_master(
+        [("manual.csv", lse_buf(), "Manual Upload")],
+        config, rates=VALID_FX, fx_error=False,
+        live_prices=False, cached_prices=dict(first["fetched_prices"]),
+    )
+    assert second["fetched_prices"] == {"FAKE.L": 4200.0}
+    assert second["master"].iloc[0]["Balance (Local)"] == pytest.approx(420.0)

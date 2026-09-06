@@ -87,10 +87,12 @@ def parse(file, file_config, mapping_asset_class, mapping_us_situs, *, context=N
             units = df.at[idx, "Units"]
             if pd.notna(ticker) and prices.get(ticker) is not None:
                 price = prices[ticker]
-                # London Stock Exchange prices are in pence — convert to pounds.
+                # London Stock Exchange quotes are in pence — convert to
+                # pounds for the balance ONLY. `fetched_prices` (and the
+                # stock_prices cache persisted from it) always hold the raw
+                # quote, so save → reload → recompile divides exactly once.
                 if str(ticker).upper().endswith(".L"):
                     price = price / 100
-                    fetched_prices[ticker] = price
                 df.at[idx, "Balance (Local)"] = units * price
 
     # --- 5. Build the standard output ---
