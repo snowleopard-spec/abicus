@@ -22,12 +22,18 @@ DEFAULT_PATH = Path(__file__).parent / "config" / "accounts.yaml"
 def load_accounts(
     path: Path = DEFAULT_PATH,
     valid_formats: set[str] | None = None,
-) -> dict[str, str]:
+) -> dict[str, dict]:
     """
     Read accounts.yaml.
 
-    Returns an ordered dict mapping account_name → format_key. Order
-    follows the YAML file (so the user controls dropdown ordering).
+    Returns an ordered dict mapping account_name → {"format": format_key,
+    "labels": [allowed labels]}. Order follows the YAML file (so the user
+    controls dropdown ordering).
+
+    Each entry may carry an optional 'labels' list — the permissible labels
+    for files parsed under that account. When absent it defaults to
+    [account_name], which reproduces the legacy behaviour where the account
+    name itself is the label.
 
     Args:
         path: Path to the YAML file.
@@ -55,7 +61,7 @@ def load_accounts(
     if not isinstance(accounts_list, list):
         raise ValueError(f"{path.name}: 'accounts' must be a list.")
 
-    result: dict[str, str] = {}
+    result: dict[str, dict] = {}
     for i, entry in enumerate(accounts_list, start=1):
         if not isinstance(entry, dict):
             raise ValueError(
@@ -84,6 +90,29 @@ def load_accounts(
                 f"a registered parser. Known formats: {sorted(valid_formats)}"
             )
 
-        result[name] = fmt
+        labels = entry.get("labels")
+        if labels is None:
+            labels = [name]
+        else:
+            if not isinstance(labels, list) or not labels:
+                raise ValueError(
+                    f"{path.name} entry {i} ('{name}'): 'labels' must be a "
+                    f"non-empty list of strings."
+                )
+            cleaned = []
+            for lbl in labels:
+                if not lbl or not isinstance(lbl, str) or not lbl.strip():
+                    raise ValueError(
+                        f"{path.name} entry {i} ('{name}'): invalid label {lbl!r}."
+                    )
+                lbl = lbl.strip()
+                if lbl in cleaned:
+                    raise ValueError(
+                        f"{path.name} entry {i} ('{name}'): duplicate label '{lbl}'."
+                    )
+                cleaned.append(lbl)
+            labels = cleaned
+
+        result[name] = {"format": fmt, "labels": labels}
 
     return result

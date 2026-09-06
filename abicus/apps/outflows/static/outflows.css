@@ -1,6 +1,6 @@
 /* ---------- Outflows theme — earthy / Playfair ---------- */
 body[data-active="outflows"] {
-  --bg-app: #FAF7F2;
+  --bg-app: #F4F2EC; /* uniform across all apps (Claims' background) */
   --bg-sidebar: #FFFFFF;
   --bg-card: #FFFFFF;
   --bg-hover: #EDE7DF;
@@ -72,7 +72,7 @@ code {
   gap: 1rem;
   background: var(--surface-alt);
   border: 1px dashed var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   padding: 1.25rem 1.5rem;
   margin-bottom: 1rem;
   cursor: pointer;
@@ -96,7 +96,8 @@ code {
 .file-list h3 { margin: 0 0 0.6rem; }
 .file-row {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  /* filename · parser select · label select · remove */
+  grid-template-columns: 1fr auto auto auto;
   gap: 1rem;
   align-items: center;
   padding: 0.5rem 0.25rem;
@@ -114,10 +115,75 @@ code {
   font-size: 0.9rem;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--bg-card);
   color: var(--text-primary);
-  min-width: 12rem;
+}
+/* Fixed widths so the selects line up across file rows regardless of the
+   option text each row happens to show. */
+.file-row select:first-of-type { width: 8rem; }   /* account */
+.file-row select:last-of-type { width: 14rem; }   /* label */
+/* Category guess pills in the Unmapped panel — click to accept. One
+   colour scheme per engine: Rapidfuzz blue, BERT green. */
+.guess-pill {
+  display: inline-block;
+  padding: 0.12rem 0.55rem;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.guess-pill--rf {
+  border: 1px solid #9FB4D0;
+  background: #E3EBF5;
+  color: #3D6491;
+}
+.guess-pill--rf:hover {
+  background: #D4E0F0;
+  border-color: #6E8CB4;
+  color: #2C4F7A;
+}
+.guess-pill--bert {
+  border: 1px solid #9AC4A0;
+  background: #E4F1E6;
+  color: #357041;
+}
+.guess-pill--bert:hover {
+  background: #D3E8D7;
+  border-color: #6FA97A;
+  color: #275C32;
+}
+/* BERT column placeholder when the optional ML stack isn't installed —
+   hover shows the install hint. */
+.guess-cell-off {
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.detect-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.detect-pending {
+  color: var(--text-muted);
+  border: 1px solid var(--border-light);
+}
+.detect-ok {
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid var(--success-border);
+}
+.detect-warn {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning-border);
 }
 .file-row .remove-btn {
   background: transparent;
@@ -132,7 +198,7 @@ code {
 
 /* ---------- Banners ---------- */
 .banner {
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   padding: 0.7rem 1rem;
   margin: 0.75rem 0;
   font-size: 0.92rem;
@@ -144,15 +210,16 @@ code {
 /* ---------- Collapsible panels (details/summary) ---------- */
 .panel {
   background: var(--bg-card);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  margin: 0.75rem 0;
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  margin: 1rem 0;
   padding: 0;
 }
 .panel summary {
   background: var(--surface-alt-2);
-  padding: 0.65rem 1rem;
-  border-radius: 6px;
+  padding: 0.65rem 1.25rem;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   font-weight: 600;
   list-style: none;
@@ -168,7 +235,7 @@ code {
 }
 .panel[open] summary::before { transform: rotate(90deg); }
 .panel summary:hover { background: var(--surface-alt-3); }
-.panel[open] summary { border-radius: 6px 6px 0 0; }
+.panel[open] summary { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
 .panel-intro { padding: 0.75rem 1rem 0; margin: 0; color: var(--text-muted); font-size: 0.92rem; }
 .panel ul { padding: 0.5rem 1rem 1rem 2.5rem; margin: 0; }
 .panel li { margin: 0.2rem 0; font-size: 0.92rem; }
@@ -180,11 +247,59 @@ code {
   font-size: 0.95rem;
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--bg-card);
   color: var(--text-primary);
 }
 .date-controls .arrow { color: var(--text-muted); font-size: 1.1rem; }
+
+/* ---------- Page tabs (visuals shared via shell .pill-tabs) ---------- */
+/* Anchored to the centre of the header so per-page action buttons
+   (Save changes, Export PDF) never shift the bar's position. Dropped
+   below the header line so the 2x page titles never run under it. */
+body[data-active="outflows"] .page-header { position: relative; }
+.ofx-tabs {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 24px);
+  transform: translate(-50%, -50%);
+}
+
+/* ---------- Saved states ---------- */
+.date-controls .state-save {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.state-save input[type="text"] {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  width: 14rem;
+}
+.states-block { margin-top: 1.25rem; }
+.states-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.states-controls select {
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  min-width: 20rem;
+}
+#state-notice { display: flex; align-items: center; gap: 0.75rem; }
+#state-notice button { flex-shrink: 0; }
 
 /* ---------- Metric tiles ---------- */
 .metrics {
@@ -198,7 +313,7 @@ code {
 }
 .metric {
   background: var(--surface-alt);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.85rem 1rem;
 }
 .metric-label {
@@ -227,22 +342,43 @@ code {
   color: var(--text-muted);
   gap: 0.25rem;
 }
-.table-filters select {
+/* Checkbox pill, same pattern as the Hide-balances control in My Assets */
+.check-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.check-pill input { margin: 0; }
+.table-filters .toggle-matched-pill {
+  margin-left: auto;
+  align-self: flex-end;
+}
+.table-filters select,
+.table-filters input[type="search"] {
   font-family: inherit;
   font-size: 0.95rem;
   padding: 0.4rem 0.55rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--bg-card);
   color: var(--text-primary);
   min-width: 14rem;
 }
+.table-filters input[type="search"] { width: 24rem; }
 
 /* ---------- Tabulator (cream theme) ---------- */
 .tabulator {
   background: var(--bg-card);
   border: 1px solid var(--border-light) !important;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   font-family: inherit !important;
   font-size: 0.92rem;
 }
@@ -272,6 +408,12 @@ code {
   max-height: 320px;
   overflow: auto;
 }
+.mini-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.mini-table th.sortable:hover { color: var(--accent); }
 .mini-table {
   width: 100%;
   border-collapse: collapse;
@@ -319,16 +461,123 @@ code {
   color: var(--text-primary);
   background: var(--surface-alt);
 }
+/* + (re-include an excluded transaction) — light green from the palette */
+.reinclude-btn {
+  background: var(--success-soft);
+  border-color: var(--success-border);
+  color: var(--success);
+  font-weight: 600;
+}
+.reinclude-btn:hover {
+  background: #DCE9CE;
+  border-color: var(--success);
+  color: var(--success);
+}
+
+/* +H (add to transaction history) — same circle, two-character label,
+   soft blue */
+.addhist-btn {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: #E3EBF5;
+  border-color: #9FB4D0;
+  color: #3D6491;
+}
+.addhist-btn:hover {
+  background: #D4E0F0;
+  border-color: #6E8CB4;
+  color: #2C4F7A;
+}
+
+/* × (exclude a categorised row) — default outline, filled with the same
+   tone as the table header row (var(--surface-alt)) */
+.row-excl-btn {
+  background: var(--surface-alt);
+  color: #3D3229;
+  font-weight: 600;
+}
+.row-excl-btn:hover {
+  background: var(--bg-active);
+  color: #2A2018;
+  border-color: var(--border);
+}
+
+/* Highlight-to-map: selecting text in a description cell shows a raised,
+   rounded translucent blue bubble over the still-readable string. The
+   native selection is made invisible here — .sel-bubble overlays (drawn
+   from the selection's client rects) replace it so the highlight can have
+   rounded edges and depth, which ::selection itself cannot. */
+.desc-cell {
+  cursor: text;
+}
+.desc-cell::selection,
+.desc-cell *::selection {
+  background: transparent;
+  color: inherit;
+}
+.sel-bubble {
+  position: fixed;
+  z-index: 999; /* under .cat-menu */
+  pointer-events: none;
+  background: rgba(232, 141, 58, 0.28);
+  border: 1px solid rgba(214, 118, 34, 0.55);
+  border-radius: 7px;
+  box-shadow:
+    0 2px 6px rgba(128, 66, 15, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* Category dropdown for the +H button and highlight-to-map. Fixed-position
+   and appended to <body> because .mini-table-wrap clips overflow. */
+.cat-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 10rem;
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 0.25rem;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-pop);
+}
+.cat-menu-item {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  border: none;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+}
+.cat-menu-item:hover {
+  background: var(--surface-alt);
+}
 
 /* ---------- Downloads ---------- */
+/* Three headed columns: Downloads / Database / Unmapped Help. */
 .downloads {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
   margin-top: 0.5rem;
 }
-@media (max-width: 720px) {
+@media (max-width: 900px) {
   .downloads { grid-template-columns: 1fr; }
+}
+.download-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+/* Same size/weight as the card h2s ("Categorised Transactions"). */
+.download-group h3 {
+  font-size: 1.5rem;
+  margin: 0;
 }
 .download-tile {
   display: flex;

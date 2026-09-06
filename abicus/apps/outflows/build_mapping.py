@@ -32,6 +32,7 @@ from pathlib import Path
 import pandas as pd
 
 from .categories import load_categories
+from .categorise import normalise_text
 
 CONFIG_DIR = Path(__file__).parent / "config"
 MAPPING_XLSX = CONFIG_DIR / "mapping.xlsx"
@@ -93,7 +94,7 @@ def validate_and_build(df: pd.DataFrame, valid_categories: set[str]) -> tuple[di
 
         original = str(row["partial_string"])
         stripped = original.strip()
-        partial = stripped.lower()
+        partial = normalise_text(stripped)
         category = str(row["category"]).strip()
 
         if original != stripped:

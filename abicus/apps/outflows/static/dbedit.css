@@ -1,0 +1,153 @@
+/* ---------- DB Edit page ---------- */
+
+/* Full-page table, not a 320px panel: fill the viewport under the header. */
+.dbedit-table-wrap {
+  padding: 0;
+  max-height: calc(100vh - 340px);
+  min-height: 12rem;
+}
+
+.dbedit-table-wrap td:first-child { white-space: nowrap; }
+
+/* Denser rows than the Spending Review panels: this table is the whole
+   page, so vertical padding is trimmed and the account column is kept to
+   one line (wrapping "UOB Black Card" doubled the row height). */
+.dbedit-table-wrap td {
+  padding-top: 0.12rem;
+  padding-bottom: 0.12rem;
+}
+.dbedit-table-wrap td:nth-last-child(2) { white-space: nowrap; }
+
+/* Match the Transaction History Table's look: same font size, the same
+   even-row stripe as the Tabulator theme in outflows.css, and a row
+   hover. nth-child striping tracks the visible (filtered/sorted) order. */
+.dbedit-table-wrap .mini-table { font-size: 0.92rem; }
+.dbedit-table-wrap tbody tr:nth-child(even) { background: #FBF8F2; }
+.dbedit-table-wrap tbody tr:hover { background: var(--surface-alt); }
+
+/* Two circle buttons per row (E + ×) share one action cell. */
+.mini-table th.dbedit-actions-col,
+.mini-table td.dbedit-actions-col {
+  width: 4.4rem;
+  padding-left: 0.3rem;
+  padding-right: 0.3rem;
+  text-align: center;
+  white-space: nowrap;
+}
+.dbedit-actions {
+  display: inline-flex;
+  gap: 0.35rem;
+}
+
+/* E (edit category) — same circle as the row actions on Spending Review,
+   soft blue like +H since both assign a category. */
+.editcat-btn {
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: #E3EBF5;
+  border-color: #9FB4D0;
+  color: #3D6491;
+}
+.editcat-btn:hover {
+  background: #D4E0F0;
+  border-color: #6E8CB4;
+  color: #2C4F7A;
+}
+
+/* Undo button inside the delete toast. */
+.toast .undo-btn {
+  margin-left: 0.75rem;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text-primary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toast .undo-btn:hover {
+  background: var(--bg-active);
+  border-color: var(--border-strong);
+}
+
+/* ---------- History panel ---------- */
+
+/* Pill buttons (View changes / Roll back) — text-sized, not circles. */
+.hist-btn {
+  padding: 0.12rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-alt);
+  color: var(--text-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hist-btn:hover {
+  background: var(--bg-active);
+  border-color: var(--border-strong);
+}
+.hist-btn-danger {
+  background: #F7E6E3;
+  border-color: #D6A29A;
+  color: #A04437;
+}
+.hist-btn-danger:hover {
+  background: #F2D6D1;
+  border-color: #C07A6E;
+  color: #86372C;
+}
+
+/* Back up DB button sits at the end of the filter row. */
+.table-filters .db-backup-btn {
+  margin-left: auto;
+  align-self: flex-end;
+  margin-bottom: 0.3rem;
+}
+
+/* "current" tag on the newest commit (the live DB state). */
+.hist-current {
+  padding: 0.12rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary, #6B6156);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#hist-rows th.hist-rowcount,
+#hist-rows td.hist-rowcount {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* History rows: wider action cell than the E/× pair. */
+#hist-rows td:last-child { width: 12.5rem; }
+#hist-rows { max-height: 24rem; }
+
+/* Inline per-commit diff under its row. */
+.hist-diff-row td { padding: 0; }
+.hist-diff {
+  margin: 0;
+  padding: 0.5rem 0.9rem;
+  background: var(--surface-alt);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.table-filters input[type="date"] {
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-primary);
+}

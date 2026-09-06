@@ -13,6 +13,11 @@
 
 #mapping-table .tabulator-cell {
   cursor: text;
+  /* Single-line rows with ellipsis, matching the Transaction History
+     Table — long rules otherwise wrap and break the uniform row height. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 #mapping-table .tabulator-cell.cell-delete { cursor: pointer; }
 .rowact.danger.inline {

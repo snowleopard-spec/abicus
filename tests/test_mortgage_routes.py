@@ -1,20 +1,20 @@
 from fastapi.testclient import TestClient
 
 EXPECTED = {
-    "/api/loan/config",
-    "/api/loan/state",
-    "/api/loan/schedule",
+    "/api/mortgage/config",
+    "/api/mortgage/state",
+    "/api/mortgage/schedule",
 }
 
 
-def test_loan_has_all_routes(all_paths):
+def test_mortgage_has_all_routes(all_paths):
     missing = EXPECTED - all_paths
     assert not missing, f"missing routes: {missing}"
 
 
-def test_loan_state_decimal_strings(app):
+def test_mortgage_state_decimal_strings(app):
     c = TestClient(app)
-    r = c.get("/api/loan/state", params={"as_of": "2026-06-28"})
+    r = c.get("/api/mortgage/state", params={"as_of": "2026-06-28"})
     assert r.status_code == 200
     s = r.json()
     # Money fields serialised as strings (precision-preserving per spec §11.4)
@@ -24,9 +24,9 @@ def test_loan_state_decimal_strings(app):
     assert s["next_payment_date"]  # populated when not paid_off
 
 
-def test_loan_schedule_summary(app):
+def test_mortgage_schedule_summary(app):
     c = TestClient(app)
-    sch = c.get("/api/loan/schedule").json()
+    sch = c.get("/api/mortgage/schedule").json()
     assert sch["rows"]
     assert sch["summary"]["payoff_date"]
     # payoff date matches the last row's payment_date

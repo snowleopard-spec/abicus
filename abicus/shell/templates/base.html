@@ -7,14 +7,22 @@
   <link rel="icon" type="image/svg+xml" href="/shell/static/img/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Sans+Pro:wght@300;400;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Poppins:wght@900&family=Source+Sans+Pro:wght@300;400;600;700&display=swap">
   <link rel="stylesheet" href="/shell/static/css/tokens.css?v={{ asset_v }}">
   <link rel="stylesheet" href="/shell/static/css/shell.css?v={{ asset_v }}">
   <link rel="stylesheet" href="/shell/static/css/components.css?v={{ asset_v }}">
   {% block head %}{% endblock %}
 </head>
 <body data-active="{{ active }}">
-  {% include "_sidebar.html" %}
+  <div class="watermark" aria-hidden="true">Abicus</div>
+  <header class="topbar">
+    <nav class="pill-tabs app-tabs" aria-label="Apps">
+      <a href="/outflows" class="pill-tab app-tab--outflows">Outflows</a>
+      <a href="/assets" class="pill-tab app-tab--assets">Assets</a>
+      <a href="/claims" class="pill-tab app-tab--claims">Claims</a>
+      <a href="/mortgage" class="pill-tab app-tab--mortgage">Mortgage</a>
+    </nav>
+  </header>
   <main class="content">
     <header class="page-header">
       <div class="page-header__title">
@@ -23,7 +31,6 @@
       </div>
       <div class="page-actions">
         {% block page_actions %}{% endblock %}
-        <span class="version-chip" title="Abicus build">{{ version }}</span>
       </div>
     </header>
     <section class="page-body">

@@ -19,6 +19,8 @@ already present (deduped on description, case-insensitive) are skipped.
 from pathlib import Path
 import pandas as pd
 
+from abicus.apps.outflows.categorise import normalise_text
+
 DEFAULT_PATH = Path(__file__).parent / "config" / "transaction_history.xlsx"
 
 REQUIRED_COLUMNS = ["date", "description", "amount", "category"]
@@ -108,7 +110,7 @@ def load_history_mapping(
                 )
                 continue
 
-        key = desc_clean.lower()
+        key = normalise_text(desc_clean)
         if key not in out:
             out[key] = cat_clean
 
@@ -226,7 +228,7 @@ def save_history_table(
     deduped: list[dict] = []
     n_dupe = 0
     for r in clean:
-        key = r["description"].lower()
+        key = normalise_text(r["description"])
         if key in seen:
             n_dupe += 1
             continue
@@ -240,6 +242,60 @@ def save_history_table(
     df.to_excel(path, index=False)
 
     return len(df), warnings
+
+
+def upsert_history_category(
+    date_str: str,
+    description: str,
+    amount: float,
+    category: str,
+    path: Path = DEFAULT_PATH,
+) -> str:
+    """
+    Add or update a single history row with a filled-in category.
+
+    Matches on description (case-insensitive, stripped). If the description
+    is already in history — e.g. from an earlier bulk append that left the
+    category blank — its category is set; otherwise a new row is appended.
+
+    Returns "updated" or "added".
+    """
+    desc_clean = str(description).strip()
+    if not desc_clean:
+        raise ValueError("Description is empty.")
+
+    existing = load_history_dataframe(path)
+    key = normalise_text(desc_clean)
+
+    mask = (
+        existing["description"]
+        .astype(str)
+        .map(normalise_text)
+        == key
+    )
+    if mask.any():
+        existing.loc[mask, "category"] = category
+        combined = existing
+        outcome = "updated"
+    else:
+        new_row = pd.DataFrame(
+            [{
+                "date": pd.to_datetime(date_str),
+                "description": desc_clean,
+                "amount": amount,
+                "category": category,
+            }],
+            columns=REQUIRED_COLUMNS,
+        )
+        combined = (
+            new_row if existing.empty
+            else pd.concat([existing, new_row], ignore_index=True)
+        )
+        outcome = "added"
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    combined.to_excel(path, index=False)
+    return outcome
 
 
 def append_to_history(
@@ -265,7 +321,7 @@ def append_to_history(
     # Load existing
     existing = load_history_dataframe(path)
     existing_keys = {
-        str(d).strip().lower()
+        normalise_text(d)
         for d in existing["description"]
         if pd.notna(d) and str(d).strip()
     }
@@ -280,7 +336,7 @@ def append_to_history(
 
     # Dedupe within the new batch itself (case-insensitive on description),
     # keeping the first occurrence
-    candidates["_key"] = candidates["description"].str.lower()
+    candidates["_key"] = candidates["description"].map(normalise_text)
     candidates = candidates.drop_duplicates(subset="_key", keep="first")
 
     # Filter out anything already in history

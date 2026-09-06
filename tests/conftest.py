@@ -39,6 +39,18 @@ def _flatten_paths(routes, prefix: str = "") -> set[str]:
     return paths
 
 
+@pytest.fixture(autouse=True)
+def _db_in_tmp(tmp_path, monkeypatch):
+    """Point outflows' DB (and therefore its git history, a sibling
+    `history/` dir) into tmp_path for every test — the write hooks added
+    in V3 checkpoint on each DB mutation, and no test may ever commit
+    into the real data/ folder. Tests that set their own DB_PATH simply
+    override this."""
+    from abicus.apps.outflows import db
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "guard" / "transactions.db")
+
+
 @pytest.fixture(scope="session")
 def app():
     return fastapi_app

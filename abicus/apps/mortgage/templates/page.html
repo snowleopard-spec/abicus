@@ -1,17 +1,16 @@
 {% extends "base.html" %}
-{% block title %}My Loan · Abicus{% endblock %}
-{% block page_title %}My Loan{% endblock %}
-{% block breadcrumb %}Tools / My Loan{% endblock %}
+{% block title %}Mortgage · Abicus{% endblock %}
+{% block page_title %}Mortgage{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/css/tabulator.min.css">
-<link rel="stylesheet" href="/loan/static/loan.css?v={{ asset_v }}">
+<link rel="stylesheet" href="/mortgage/static/mortgage.css?v={{ asset_v }}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator/6.3.1/js/tabulator.min.js"></script>
 {% endblock %}
 
 {% block page_actions %}
 <input class="input" type="date" id="as-of-picker" style="width: 150px;">
-<button class="btn" id="edit-loan-btn">Edit loan</button>
+<button class="btn" id="edit-mortgage-btn">Edit mortgage</button>
 {% endblock %}
 
 {% block content %}
@@ -54,7 +53,7 @@
     <div class="bs-figure" id="bs-figure"></div>
     <div class="bs-warning hidden" id="bs-warning"></div>
     <div class="bs-empty hidden" id="bs-empty">
-      Set a <strong>Property value</strong> in Edit loan to see the balance-sheet view.
+      Set a <strong>Property value</strong> in Edit mortgage to see the balance-sheet view.
     </div>
   </div>
 </section>
@@ -71,7 +70,7 @@
   <div class="modal-backdrop">
     <div class="modal">
       <div class="modal__header">
-        <h2 class="modal__title">Edit loan</h2>
+        <h2 class="modal__title">Edit mortgage</h2>
         <button class="btn btn-ghost btn-sm" data-role="close">✕</button>
       </div>
       <form class="modal__body" data-role="form">
@@ -128,5 +127,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/loan/static/loan.js?v={{ asset_v }}"></script>
+<script src="/mortgage/static/mortgage.js?v={{ asset_v }}"></script>
 {% endblock %}

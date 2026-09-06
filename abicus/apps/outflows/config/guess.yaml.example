@@ -1,0 +1,12 @@
+# Guess-feature tuning (copy to guess.yaml to customise; delete guess.yaml
+# to fall back to the built-in defaults shown here).
+#
+# min_score: relative match quality in (0, 1] — the fraction of a known
+#   description's characters that must line up with the unmapped one
+#   (1 - substitutions/len(candidate)). Higher = stricter = fewer guesses.
+# min_candidate_length: known descriptions shorter than this (after
+#   normalisation) are never offered as guesses — very short strings match
+#   almost anything by coincidence.
+
+min_score: 0.90
+min_candidate_length: 5

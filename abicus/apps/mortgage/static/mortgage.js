@@ -45,9 +45,9 @@
   }
 
   async function refreshAll() {
-    state.config = await api.get("/api/loan/config");
-    state.snapshot = await api.get(`/api/loan/state?as_of=${state.asOf}`);
-    state.schedule = await api.get("/api/loan/schedule");
+    state.config = await api.get("/api/mortgage/config");
+    state.snapshot = await api.get(`/api/mortgage/state?as_of=${state.asOf}`);
+    state.schedule = await api.get("/api/mortgage/schedule");
     renderTiles();
     renderLast();
     renderBalanceSheet();
@@ -55,7 +55,7 @@
   }
 
   async function refreshSnapshot() {
-    state.snapshot = await api.get(`/api/loan/state?as_of=${state.asOf}`);
+    state.snapshot = await api.get(`/api/mortgage/state?as_of=${state.asOf}`);
     renderTiles();
     renderLast();
     renderBalanceSheet();
@@ -224,7 +224,7 @@
   // ---------- edit modal ----------
 
   function wireEdit() {
-    document.getElementById("edit-loan-btn").addEventListener("click", openEditModal);
+    document.getElementById("edit-mortgage-btn").addEventListener("click", openEditModal);
   }
 
   function openEditModal() {
@@ -261,7 +261,7 @@
         property_value: pvRaw === "" ? null : pvRaw,
       };
       try {
-        await api.putJson("/api/loan/config", body);
+        await api.putJson("/api/mortgage/config", body);
         toast("Loan saved", "ok");
         close();
         await refreshAll();

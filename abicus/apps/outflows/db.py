@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
+from . import db_history
+
 DB_PATH = Path(__file__).parent / "data" / "transactions.db"
 
 SCHEMA = """
@@ -64,6 +66,7 @@ def upsert(rows: Iterable[dict]) -> dict:
 
     Returns {"inserted": N, "updated": M, "total_in_db": T}.
     """
+    db_history.ensure_baseline(db_path=DB_PATH)
     now = datetime.utcnow().isoformat(timespec="seconds")
     inserted = updated = 0
     occ_seen: dict[tuple, int] = {}
@@ -102,6 +105,11 @@ def upsert(rows: Iterable[dict]) -> dict:
             else:
                 updated += 1
         total = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+    if inserted or updated:
+        db_history.checkpoint(
+            f"upsert: +{inserted} inserted, {updated} updated (total {total})",
+            db_path=DB_PATH,
+        )
     return {"inserted": inserted, "updated": updated, "total_in_db": int(total)}
 
 
@@ -110,10 +118,116 @@ def clear() -> dict:
     next commit doesn't need to re-init. Returns {"deleted": N}."""
     if not DB_PATH.exists():
         return {"deleted": 0}
+    db_history.ensure_baseline(db_path=DB_PATH)
     with _connect() as conn:
         n = conn.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
         conn.execute("DELETE FROM transactions")
+    if n:
+        db_history.checkpoint(f"clear: {n} deleted", db_path=DB_PATH)
     return {"deleted": int(n)}
+
+
+ROW_COLS = [
+    "tx_hash", "date", "description", "amount", "category", "account",
+    "matched_pattern", "source_file", "committed_at",
+]
+
+
+def list_rows() -> list[dict]:
+    """Every DB row, newest first, for the DB Edit page."""
+    if not DB_PATH.exists():
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            f"""SELECT {", ".join(ROW_COLS)}
+                FROM transactions
+                ORDER BY date DESC, committed_at DESC, description ASC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def update_category(tx_hash: str, category: str) -> bool:
+    """Set one row's category in place. Returns False if the hash is gone
+    (e.g. the row was deleted from another tab)."""
+    db_history.ensure_baseline(db_path=DB_PATH)
+    with _connect() as conn:
+        cur = conn.execute(
+            "UPDATE transactions SET category = ? WHERE tx_hash = ?",
+            (category, tx_hash),
+        )
+        changed = cur.rowcount > 0
+    if changed:
+        db_history.checkpoint(
+            f"update_category {tx_hash[:8]}: → {category}", db_path=DB_PATH
+        )
+    return changed
+
+
+def delete_row(tx_hash: str) -> dict | None:
+    """Delete one row, returning its full content so the client can offer
+    an undo. Returns None if the hash doesn't exist."""
+    db_history.ensure_baseline(db_path=DB_PATH)
+    with _connect() as conn:
+        row = conn.execute(
+            f"SELECT {', '.join(ROW_COLS)} FROM transactions WHERE tx_hash = ?",
+            (tx_hash,),
+        ).fetchone()
+        if row is None:
+            return None
+        conn.execute("DELETE FROM transactions WHERE tx_hash = ?", (tx_hash,))
+    db_history.checkpoint(f"delete_row {tx_hash[:8]}", db_path=DB_PATH)
+    return dict(row)
+
+
+def restore_row(row: dict) -> None:
+    """Re-insert a row previously returned by delete_row (undo). Keyed on
+    the original tx_hash, so restoring twice is a no-op overwrite."""
+    db_history.ensure_baseline(db_path=DB_PATH)
+    with _connect() as conn:
+        conn.execute(
+            f"""INSERT OR REPLACE INTO transactions
+                ({", ".join(ROW_COLS)})
+                VALUES ({", ".join("?" * len(ROW_COLS))})""",
+            tuple(row.get(c) for c in ROW_COLS),
+        )
+    db_history.checkpoint(
+        f"restore_row {str(row.get('tx_hash', ''))[:8]}", db_path=DB_PATH
+    )
+
+
+def backup() -> dict:
+    """Snapshot the live DB into data/backups/transactions_<stamp>.db using
+    SQLite's online backup API (consistent even mid-write, unlike a file
+    copy). Returns {"file": name, "rows": N, "bytes": size}."""
+    backups_dir = DB_PATH.parent / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    dest_path = backups_dir / f"transactions_{stamp}.db"
+    with _connect() as src, sqlite3.connect(dest_path) as dest:
+        src.backup(dest)
+        n = dest.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
+    return {
+        "file": dest_path.name,
+        "path": str(dest_path.resolve()),
+        "rows": int(n),
+        "bytes": dest_path.stat().st_size,
+    }
+
+
+def load_description_categories() -> list[tuple[str, str]]:
+    """Distinct (description, category) pairs for the guess feature.
+    Where a description was committed under more than one category over
+    time, the most recent row wins (SQLite bare-column-with-MAX idiom)."""
+    if not DB_PATH.exists():
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT description, category, MAX(date)
+               FROM transactions
+               WHERE category != 'Uncategorised'
+               GROUP BY description"""
+        ).fetchall()
+    return [(str(d), str(c)) for d, c, _ in rows]
 
 
 def load_monthly_breakdown(selected_months: list[str] | None = None) -> dict:
@@ -162,3 +276,37 @@ def load_monthly_breakdown(selected_months: list[str] | None = None) -> dict:
     # Drop categories that have no rows in the selection.
     by_category = {k: v for k, v in by_category.items() if k in lifetime}
     return {"months": months, "by_category": by_category, "lifetime_totals": lifetime}
+
+
+def load_all_transactions() -> list[dict]:
+    """Every row's display columns, for the self-contained breakdown HTML
+    export. Same ordering as load_breakdown_transactions so the exported
+    page's per-bar lists match the live ones."""
+    if not DB_PATH.exists():
+        return []
+    with _connect() as conn:
+        rows = conn.execute(
+            """SELECT date, description, amount, category, account
+               FROM transactions
+               ORDER BY date ASC, amount DESC, description ASC"""
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def load_breakdown_transactions(month: str, category: str | None = None) -> list[dict]:
+    """The rows behind one bar on the breakdown page: everything in a
+    month, optionally restricted to one category (the Monthly-total bars
+    pass no category)."""
+    if not DB_PATH.exists():
+        return []
+    query = """SELECT date, description, amount, category, account
+               FROM transactions
+               WHERE substr(date, 1, 7) = ?"""
+    params: list = [month]
+    if category is not None:
+        query += " AND category = ?"
+        params.append(category)
+    query += " ORDER BY date ASC, amount DESC, description ASC"
+    with _connect() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]

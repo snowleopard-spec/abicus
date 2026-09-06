@@ -17,9 +17,14 @@
     style: "currency", currency: "SGD", minimumFractionDigits: 2, maximumFractionDigits: 2,
   });
 
+  // Categories the header toggle removes from totals (and whose tiles it
+  // hides). Names must match config/categories.txt exactly.
+  const EXCLUDABLE_CATS = ["Rent", "Education", "Holidays", "Exceptional"];
+
   const state = {
     data: null,             // {months, by_category, lifetime_totals}
     selectedMonths: new Set(),
+    excludeHeavy: false,    // header toggle: drop EXCLUDABLE_CATS from view
   };
 
   // ---- Boot ----
@@ -49,10 +54,34 @@
     document.getElementById("breakdown-grid").classList.remove("hidden");
     wireShortcuts();
     wireExport();
+    document
+      .getElementById("breakdown-detail-close")
+      .addEventListener("click", hideDetail);
+    wireDetailFilters();
     redraw();
   }
 
   function wireExport() {
+    const htmlBtn = document.getElementById("export-html-btn");
+    if (htmlBtn) {
+      htmlBtn.addEventListener("click", async () => {
+        htmlBtn.disabled = true;
+        const originalText = htmlBtn.textContent;
+        htmlBtn.textContent = "Generating…";
+        try {
+          await api.download("/api/outflows/breakdown/html", {
+            method: "GET",
+            fallbackName: "monthly_breakdown.html",
+          });
+        } catch (err) {
+          alert(`Export failed: ${err.message || err}`);
+        } finally {
+          htmlBtn.disabled = false;
+          htmlBtn.textContent = originalText;
+        }
+      });
+    }
+
     const btn = document.getElementById("export-pdf-btn");
     if (!btn) return;
     btn.addEventListener("click", async () => {
@@ -99,31 +128,17 @@
   }
 
   function wireShortcuts() {
-    document.getElementById("chip-all").addEventListener("click", () => {
-      state.selectedMonths = new Set(state.data.months);
-      syncChipsToState();
+    document.getElementById("exclude-heavy").addEventListener("change", (e) => {
+      state.excludeHeavy = e.target.checked;
       redraw();
     });
-    document.getElementById("chip-none").addEventListener("click", () => {
-      state.selectedMonths.clear();
-      syncChipsToState();
-      redraw();
-    });
-  }
-
-  function syncChipsToState() {
-    for (const el of document.querySelectorAll(".month-chip")) {
-      const input = el.querySelector("input");
-      const on = state.selectedMonths.has(input.dataset.month);
-      input.checked = on;
-      el.classList.toggle("is-on", on);
-    }
   }
 
   // ---- Grid render ----
   function redraw() {
     const grid = document.getElementById("breakdown-grid");
     grid.innerHTML = "";
+    hideDetail(); // a bar selection is stale once the month set changes
 
     // Months in canonical order, restricted to what's selected.
     const months = state.data.months.filter((m) => state.selectedMonths.has(m));
@@ -131,8 +146,11 @@
 
     // Compute per-category totals restricted to selected months.
     // Categories with $0 in the selection get filtered out — no point rendering an empty tile.
+    const catNames = Object.keys(byCat).filter(
+      (c) => !(state.excludeHeavy && EXCLUDABLE_CATS.includes(c)),
+    );
     const catTotals = {};
-    for (const cat of Object.keys(byCat)) {
+    for (const cat of catNames) {
       let t = 0;
       for (const m of months) t += byCat[cat][m] || 0;
       if (t > 0) catTotals[cat] = t;
@@ -151,14 +169,22 @@
     // Total tile a bit bigger.
     grid.style.setProperty("--total-chart-h", `${Math.min(520, chartH + 60)}px`);
 
+    // Grand total across the visible categories — the denominator for each
+    // tile's %-of-expenditure badge. Respects the exclude toggle by
+    // construction (excluded categories never reach catTotals).
+    const visibleGrand = categories.reduce((a, c) => a + catTotals[c], 0);
+
     let paletteIdx = 0;
     for (const cat of categories) {
+      const pct = visibleGrand > 0 ? (catTotals[cat] / visibleGrand) * 100 : 0;
+      const pctLabel = pct >= 0.5 ? `${Math.round(pct)}%` : "<1%";
       const tile = document.createElement("div");
       tile.className = "breakdown-tile";
       tile.innerHTML = `
         <div class="breakdown-tile-header">
           <span class="breakdown-tile-title">${escapeHtml(cat)}</span>
-          <span class="breakdown-tile-total">${fmtSGD.format(catTotals[cat])}</span>
+          <span class="breakdown-tile-pct" title="${pct.toFixed(1)}% of expenditure across the selected months">${pctLabel}</span>
+          <span class="breakdown-tile-amount">${fmtSGD.format(catTotals[cat])}</span>
         </div>
         <div class="breakdown-tile-chart"></div>
       `;
@@ -169,6 +195,7 @@
       const catMonths = byCat[cat] || {};
       const values = months.map((m) => catMonths[m] || 0);
       const labels = months.map(monthLabel);
+      const avg = months.length > 1 ? catTotals[cat] / months.length : null;
       Plotly.react(
         chartEl,
         [{
@@ -183,9 +210,13 @@
           hovertemplate: "<b>%{y}</b><br>%{customdata}<extra></extra>",
           customdata: values.map((v) => fmtSGDprecise.format(v)),
         }],
-        chartLayout(chartH),
+        chartLayout(chartH, avg),
         { displayModeBar: false, responsive: true },
-      );
+      ).then((gd) => {
+        gd.on("plotly_click", (ev) => {
+          showDetail(months[ev.points[0].pointIndex], cat);
+        });
+      });
     }
   }
 
@@ -204,18 +235,22 @@
       return;
     }
 
-    // Sum every category's spend for each selected month.
+    // Sum each visible category's spend for each selected month — `categories`
+    // already excludes the toggled-off ones (and $0 categories, which add nothing).
     const monthTotals = months.map((m) => {
       let t = 0;
-      for (const cat of Object.keys(byCat)) t += byCat[cat][m] || 0;
+      for (const cat of categories) t += byCat[cat][m] || 0;
       return t;
     });
     const grandTotal = monthTotals.reduce((a, b) => a + b, 0);
+    const exclNote = state.excludeHeavy
+      ? ` · excl. ${EXCLUDABLE_CATS.join("/")}`
+      : "";
 
     tile.innerHTML = `
       <div class="breakdown-tile-header">
-        <span class="breakdown-tile-title">Monthly total (${months.length} month${months.length === 1 ? "" : "s"}, ${categories.length} categor${categories.length === 1 ? "y" : "ies"})</span>
-        <span class="breakdown-tile-total">${fmtSGDprecise.format(grandTotal)}</span>
+        <span class="breakdown-tile-title">Monthly total (${months.length} month${months.length === 1 ? "" : "s"}, ${categories.length} categor${categories.length === 1 ? "y" : "ies"}${exclNote})</span>
+        <span class="breakdown-tile-amount">${fmtSGDprecise.format(grandTotal)}</span>
       </div>
       <div class="breakdown-tile-chart"></div>
     `;
@@ -238,15 +273,146 @@
         hovertemplate: "<b>%{y}</b><br>%{customdata}<extra></extra>",
         customdata: monthTotals.map((v) => fmtSGDprecise.format(v)),
       }],
-      chartLayout(totalH),
+      chartLayout(totalH, months.length > 1 ? grandTotal / months.length : null),
       { displayModeBar: false, responsive: true },
-    );
+    ).then((gd) => {
+      gd.on("plotly_click", (ev) => {
+        showDetail(months[ev.points[0].pointIndex], null);
+      });
+    });
   }
 
-  function chartLayout(height) {
-    return {
+  // ---- Per-bar transaction detail box ----
+  // Mirrors the Spending Review page's Categorised Transactions section:
+  // a Tabulator table (sortable columns) behind category/account/search
+  // filters. Rows are fetched per clicked bar; filters are client-side.
+  let detailToken = 0; // discards stale responses when bars are clicked quickly
+  const detail = {
+    rows: [],
+    filter: { category: "All", account: "All", search: "" },
+    table: null,
+  };
+
+  function hideDetail() {
+    detailToken++;
+    document.getElementById("breakdown-detail").classList.add("hidden");
+  }
+
+  function wireDetailFilters() {
+    document.getElementById("bd-filter-category").addEventListener("change", (e) => {
+      detail.filter.category = e.target.value;
+      renderDetailTable();
+    });
+    document.getElementById("bd-filter-account").addEventListener("change", (e) => {
+      detail.filter.account = e.target.value;
+      renderDetailTable();
+    });
+    document.getElementById("bd-filter-search").addEventListener("input", (e) => {
+      detail.filter.search = e.target.value;
+      renderDetailTable();
+    });
+  }
+
+  async function showDetail(month, cat) {
+    const token = ++detailToken;
+    const section = document.getElementById("breakdown-detail");
+    const caption = document.getElementById("breakdown-detail-caption");
+    const allLabel = state.excludeHeavy
+      ? `All categories (excl. ${EXCLUDABLE_CATS.join("/")})`
+      : "All categories";
+    document.getElementById("breakdown-detail-title").textContent =
+      `${cat === null ? allLabel : cat} — ${monthLabel(month)}`;
+    caption.textContent = "Loading…";
+    section.classList.remove("hidden");
+
+    let data;
+    try {
+      const params = new URLSearchParams({ month });
+      if (cat !== null) params.set("category", cat);
+      data = await api.get(`/api/outflows/breakdown/transactions?${params}`);
+    } catch (err) {
+      if (token !== detailToken) return;
+      caption.textContent = `Failed to load: ${err.message || err}`;
+      return;
+    }
+    if (token !== detailToken) return; // a newer click superseded this one
+
+    let rows = data.rows || [];
+    // Keep the "All categories" detail box consistent with the total bar
+    // that was clicked — excluded categories stay out of it too.
+    if (cat === null && state.excludeHeavy) {
+      rows = rows.filter((r) => !EXCLUDABLE_CATS.includes(r.category));
+    }
+    detail.rows = rows;
+    detail.filter = { category: "All", account: "All", search: "" };
+    document.getElementById("bd-filter-search").value = "";
+    renderDetailTable();
+    section.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  function renderDetailTable() {
+    refreshDetailFilterOptions("bd-filter-category", "category");
+    refreshDetailFilterOptions("bd-filter-account", "account");
+
+    const { category, account, search } = detail.filter;
+    let view = detail.rows;
+    if (category !== "All") view = view.filter((r) => r.category === category);
+    if (account !== "All") view = view.filter((r) => r.account === account);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      view = view.filter((r) =>
+        String(r.description ?? "").toLowerCase().includes(q));
+    }
+
+    const total = view.reduce((a, r) => a + r.amount, 0);
+    document.getElementById("breakdown-detail-caption").textContent =
+      `${view.length} transaction${view.length === 1 ? "" : "s"} · ${fmtSGDprecise.format(total)}`;
+
+    if (!detail.table) {
+      detail.table = new Tabulator("#breakdown-detail-table", {
+        data: view,
+        layout: "fitColumns",
+        placeholder: "No transactions match the current filters.",
+        pagination: false,
+        maxHeight: "500px",
+        columns: [
+          { title: "Date", field: "date", width: 110, sorter: "string" },
+          { title: "Description", field: "description", minWidth: 200 },
+          { title: "Amount", field: "amount", hozAlign: "right", width: 110, sorter: "number",
+            formatter: (cell) => fmtSGD.format(cell.getValue()) },
+          { title: "Category", field: "category", width: 160 },
+          { title: "Account", field: "account", width: 160 },
+        ],
+      });
+    } else {
+      detail.table.replaceData(view);
+    }
+  }
+
+  function refreshDetailFilterOptions(selectId, field) {
+    const select = document.getElementById(selectId);
+    const current = detail.filter[field];
+    const values = [...new Set(detail.rows.map((r) => r[field]))].sort();
+    select.innerHTML = "";
+    for (const v of ["All", ...values]) {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      if (v === current) opt.selected = true;
+      select.appendChild(opt);
+    }
+    if (!["All", ...values].includes(current)) {
+      detail.filter[field] = "All";
+      select.value = "All";
+    }
+  }
+
+  // `avg` (optional): draw a faint vertical dotted line at the per-month
+  // average with a small label above the plot. Passed only when 2+ months
+  // are selected — with one month the line just retraces the bar.
+  function chartLayout(height, avg = null) {
+    const layout = {
       height,
-      margin: { l: 62, r: 44, t: 6, b: 32 },
+      margin: { l: 62, r: 44, t: avg !== null ? 28 : 6, b: 32 },
       xaxis: {
         tickprefix: "$",
         tickformat: ",.0f",
@@ -264,6 +430,22 @@
       font: { family: "Source Sans Pro, sans-serif", size: 11 },
       bargap: 0.25,
     };
+    if (avg !== null) {
+      layout.shapes = [{
+        type: "line",
+        x0: avg, x1: avg,
+        y0: 0, y1: 1, yref: "paper",
+        line: { color: "rgba(139, 122, 106, 0.45)", width: 1, dash: "dot" },
+        layer: "above",
+      }];
+      layout.annotations = [{
+        x: avg, y: 1, yref: "paper", yanchor: "bottom",
+        showarrow: false,
+        text: `avg ${fmtSGD.format(avg)}/mo`,
+        font: { size: 12, color: "#8B7A6A" },
+      }];
+    }
+    return layout;
   }
 
   function monthLabel(iso) {

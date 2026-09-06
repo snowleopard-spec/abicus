@@ -53,6 +53,6 @@ if [ -d "$CLAIMS_SRC/invoices" ]; then
 fi
 
 echo "Backfilling loan..."
-[ -f "$LOAN_SRC/loan.json" ] && copy_into "$LOAN_SRC/loan.json" "$APPS/loan/config"
+[ -f "$LOAN_SRC/loan.json" ] && copy_into "$LOAN_SRC/loan.json" "$APPS/mortgage/config"
 
 echo "Done."

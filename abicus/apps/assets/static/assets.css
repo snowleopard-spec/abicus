@@ -1,6 +1,6 @@
 /* ---------- Assets theme — olive / Avenir Next ---------- */
 body[data-active="assets"] {
-  --bg-app: #FAF6EF;
+  --bg-app: #F4F2EC; /* uniform across all apps (Claims' background) */
   --bg-sidebar: #FFFFFF;
   --bg-card: #FFFFFF;
   --bg-hover: #EFE8DC;
@@ -52,7 +52,7 @@ body[data-active="assets"] .dropzone {
   gap: 1rem;
   background: var(--bg-hover);
   border: 1px dashed var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   padding: 1.25rem 1.5rem;
   margin-bottom: 1rem;
   cursor: pointer;
@@ -95,7 +95,7 @@ body[data-active="assets"] .dropzone:hover {
   font-size: 0.9rem;
   padding: 0.35rem 0.5rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   background: var(--bg-card);
   color: var(--text-primary);
   min-width: 12rem;
@@ -179,8 +179,8 @@ body[data-active="assets"] .dropzone:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  border-radius: 999px;
   background: var(--bg-app);
   border: 1px solid var(--border);
   font-size: var(--text-sm);

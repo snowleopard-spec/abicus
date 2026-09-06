@@ -1,6 +1,6 @@
 # Abicus
 
-A local-only personal-finance dashboard. Combines four sub-apps — **My Outflows**, **My Assets**, **My Claims**, **My Loan** — under one FastAPI server with a single Cloudflare-style sidebar UI.
+A local-only personal-finance dashboard. Combines four sub-apps — **Outflows**, **Assets**, **Claims**, **Mortgage** — under one FastAPI server behind a shared tab-bar shell.
 
 Localhost only, single-user, no auth. The build spec lives in [`SPEC.md`](SPEC.md).
 
@@ -9,7 +9,7 @@ http://127.0.0.1:8765/
 ├── /outflows  — statement parser + categoriser (xlsx/csv → categorised xlsx + HTML snapshot)
 ├── /assets    — portfolio compiler (broker statements → holdings + allocation charts + PDF)
 ├── /claims    — medical-claims tracker (SQLite + invoice file storage)
-└── /loan      — mortgage snapshot + amortisation schedule
+└── /mortgage  — mortgage snapshot + amortisation schedule
 ```
 
 ---
@@ -75,7 +75,7 @@ Each sub-app keeps its own folder; `config/` and `data/` are gitignored.
 | outflows | `categories.txt`, `accounts.yaml`, `mapping.xlsx`, `mapping.json`, `transaction_history.xlsx` | — |
 | assets   | `sources.yaml`, `asset_class_labels.csv`, `mapping_asset_class.csv`, `mapping_broad_asset_class.csv`, `mapping_us_situs.csv`, `currency_lookthrough.csv`, `fx_rates_cache.json` | `last_compiled.parquet`, `last_compiled_meta.json` |
 | claims   | `claimants.json`, `institutions.json` | `mediclaim.db`, `invoices/*` |
-| loan     | `loan.json` | — |
+| mortgage | `loan.json` | — |
 
 To seed a fresh install without the migration script, copy your own files into the corresponding `apps/<name>/config/` and `apps/<name>/data/` paths.
 
@@ -87,14 +87,14 @@ To seed a fresh install without the migration script, copy your own files into t
 pytest -q
 ```
 
-Smoke tests verify that the server boots, every sub-app renders, every legacy route is reachable, and the loan endpoint preserves Decimal precision in its JSON payload. No integration tests against real statement files.
+Smoke tests verify that the server boots, every sub-app renders, every legacy route is reachable, and the mortgage endpoint preserves Decimal precision in its JSON payload. No integration tests against real statement files.
 
 ---
 
 ## Tech notes
 
 - One FastAPI app at `127.0.0.1:8765`. Each sub-app exposes two routers (`views_router`, `api_router`) wired under `/<name>` and `/api/<name>` respectively.
-- Templates resolved via a `ChoiceLoader[shell, PrefixLoader{outflows,assets,claims,loan}]` — each per-app `page.html` references shell partials with `{% extends "base.html" %}`.
+- Templates resolved via a `ChoiceLoader[shell, PrefixLoader{outflows,assets,claims,mortgage}]` — each per-app `page.html` references shell partials with `{% extends "base.html" %}`.
 - Vanilla HTML / CSS / JS — no bundler. Plotly + Tabulator load from CDN on the pages that need them.
 - Each sub-app keeps its own persistence (SQLite, parquet, xlsx, json). No shared database.
 - SESSIONS dicts are per-process and in-memory — re-Compile after a restart.

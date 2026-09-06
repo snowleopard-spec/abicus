@@ -5,13 +5,18 @@
     nextFileId: 1,
     session: null,                                 // /api/outflows/compile payload
     dateRange: { from: null, to: null },
-    tableFilter: { category: "All", account: "All" },
+    tableFilter: { category: "All", account: "All", search: "", matched: false },
     table: null,
     scoped: null,                                  // {rows, dedup, dashboardRows}
-    // Per-row overrides toggled from the Duplicate / Excluded panels.
+    // Per-row overrides toggled from the Duplicate / Excluded panels and the
+    // × button on the Categorised Transactions table.
     // Stored as Sets of row _idx so persistence (below) is compact.
     unsuppressedDup: new Set(),
     reincludedExcl: new Set(),
+    manualExcl: new Set(),
+    reincludedRef: new Set(),
+    guesses: {},                                   // row _idx → {category, matched, score}
+    panelSort: {},                                 // panel → {key, dir}
   };
 
   // sessionStorage keys — cleared on tab close, per-tab so nothing leaks
@@ -51,6 +56,9 @@
     wireDateRange();
     wireTableFilters();
     wireDownloads();
+    wireHighlightToMap();
+    wireStates();
+    refreshStatesList();
     await tryRestoreSession();
   }
 
@@ -64,6 +72,9 @@
         tableFilter: state.tableFilter,
         unsuppressedDup: [...state.unsuppressedDup],
         reincludedExcl: [...state.reincludedExcl],
+        manualExcl: [...state.manualExcl],
+        reincludedRef: [...state.reincludedRef],
+        panelSort: state.panelSort,
       }));
     } catch { /* quota / privacy mode — silently ignore */ }
   }
@@ -100,6 +111,14 @@
       const r = state.session.rows[idx];
       if (r) { r._reincluded = true; state.reincludedExcl.add(idx); }
     }
+    for (const idx of saved.manualExcl || []) {
+      if (state.session.rows[idx]) state.manualExcl.add(idx);
+    }
+    for (const idx of saved.reincludedRef || []) {
+      const r = state.session.rows[idx];
+      if (r) { r._refIncluded = true; state.reincludedRef.add(idx); }
+    }
+    if (saved.panelSort) state.panelSort = saved.panelSort;
     // Duplicates count is a stored summary — decrement for restored un-suppresses.
     state.session.duplicates_count = Math.max(
       0, (state.session.duplicates_count || 0) - state.unsuppressedDup.size,
@@ -111,6 +130,24 @@
       "history edits made since.";
     show(notice);
     renderResults(/* preserveDateRange */ true);
+    fetchGuesses();
+  }
+
+  // Ask the server for best-guess categories for the unmapped rows.
+  // Fire-and-forget: pills appear in the panel when the answer lands.
+  async function fetchGuesses() {
+    if (!state.session) return;
+    const sid = state.session.session_id;
+    let resp;
+    try {
+      resp = await api.postJson(`/api/outflows/guess/${sid}`, {});
+    } catch {
+      return; // guessing is best-effort; the panel just shows no pills
+    }
+    if (!state.session || state.session.session_id !== sid) return;
+    state.guesses = resp.guesses || {};
+    state.transformer = resp.transformer || { available: false, hint: null };
+    renderForDateRange();
   }
 
   // Give every row a stable id so the un-suppress action can flip a
@@ -118,6 +155,146 @@
   function stampRowIndices() {
     if (!state.session || !state.session.rows) return;
     state.session.rows.forEach((r, i) => { r._idx = i; });
+  }
+
+  // Re-apply the current override sets to freshly (re)hydrated rows.
+  function reapplyOverrides() {
+    const rows = state.session.rows;
+    for (const idx of state.unsuppressedDup) {
+      if (rows[idx]) rows[idx].duplicate = false;
+    }
+    for (const idx of state.reincludedExcl) {
+      if (rows[idx]) rows[idx]._reincluded = true;
+    }
+    for (const idx of state.reincludedRef) {
+      if (rows[idx]) rows[idx]._refIncluded = true;
+    }
+    state.session.duplicates_count = Math.max(
+      0, (state.session.duplicates_count || 0) - state.unsuppressedDup.size,
+    );
+  }
+
+  // ---- Saved states (cross-restart persistence) ----
+  function wireStates() {
+    $("state-save").addEventListener("click", saveState);
+    $("state-load").addEventListener("click", loadState);
+    $("state-delete").addEventListener("click", deleteState);
+    $("state-recat").addEventListener("click", recategoriseSession);
+  }
+
+  async function refreshStatesList() {
+    let resp;
+    try {
+      resp = await api.get("/api/outflows/state/list");
+    } catch { return; }
+    const states = resp.states || [];
+    const block = $("states-block");
+    const select = $("state-select");
+    select.innerHTML = "";
+    if (!states.length) {
+      hide(block);
+      return;
+    }
+    for (const s of states) {
+      const opt = document.createElement("option");
+      opt.value = s.file;
+      const when = (s.saved_at || "").replace("T", " ");
+      opt.textContent = `${s.label} — ${when}${s.n_rows != null ? ` (${s.n_rows} rows)` : ""}`;
+      select.appendChild(opt);
+    }
+    show(block);
+  }
+
+  function currentUiState() {
+    return {
+      dateRange: state.dateRange,
+      tableFilter: state.tableFilter,
+      unsuppressedDup: [...state.unsuppressedDup],
+      reincludedExcl: [...state.reincludedExcl],
+      manualExcl: [...state.manualExcl],
+      reincludedRef: [...state.reincludedRef],
+    };
+  }
+
+  async function saveState() {
+    if (!state.session) return;
+    let resp;
+    try {
+      resp = await api.postJson(`/api/outflows/state/save/${state.session.session_id}`, {
+        label: $("state-label").value,
+        ui: currentUiState(),
+      });
+    } catch { return; }
+    toast(`Saved state "${resp.label}" (${resp.n_rows} rows).`, "info");
+    $("state-label").value = "";
+    refreshStatesList();
+  }
+
+  async function loadState() {
+    const file = $("state-select").value;
+    if (!file) return;
+    let resp;
+    try {
+      resp = await api.postJson("/api/outflows/state/load", { file });
+    } catch { return; }
+
+    state.session = resp.session;
+    stampRowIndices();
+    const ui = resp.ui || {};
+    state.unsuppressedDup = new Set(ui.unsuppressedDup || []);
+    state.reincludedExcl = new Set(ui.reincludedExcl || []);
+    state.manualExcl = new Set(ui.manualExcl || []);
+    state.reincludedRef = new Set(ui.reincludedRef || []);
+    reapplyOverrides();
+    if (ui.dateRange && ui.dateRange.from) state.dateRange = ui.dateRange;
+    state.tableFilter = Object.assign(
+      { category: "All", account: "All", search: "", matched: false },
+      ui.tableFilter || {},
+    );
+    state.guesses = {};
+
+    const meta = resp.meta || {};
+    $("state-notice-text").textContent =
+      `Loaded "${meta.label || file}" (saved ${(meta.saved_at || "?").replace("T", " ")}). ` +
+      "Categories are frozen as of the save.";
+    show($("state-notice"));
+    hide($("restored-notice"));
+
+    saveSession();
+    renderResults(/* preserveDateRange */ true);
+    fetchGuesses();
+  }
+
+  async function deleteState() {
+    const select = $("state-select");
+    const file = select.value;
+    if (!file) return;
+    const label = select.options[select.selectedIndex].textContent;
+    if (!window.confirm(`Delete saved state:\n${label}?`)) return;
+    try {
+      await api.postJson("/api/outflows/state/delete", { file });
+    } catch { return; }
+    toast("State deleted.", "info");
+    refreshStatesList();
+  }
+
+  async function recategoriseSession() {
+    if (!state.session) return;
+    let resp;
+    try {
+      resp = await api.postJson(
+        `/api/outflows/session/recategorise/${state.session.session_id}`, {},
+      );
+    } catch { return; }
+    state.session = resp;
+    stampRowIndices();
+    reapplyOverrides();
+    state.guesses = {};
+    $("state-notice-text").textContent =
+      "Re-categorised against the current mapping and history.";
+    saveSession();
+    renderResults(/* preserveDateRange */ true);
+    fetchGuesses();
   }
 
   // ---- Dropzone / file list ----
@@ -136,16 +313,99 @@
     dz.addEventListener("drop", (e) => addFiles(Array.from(e.dataTransfer.files)));
   }
 
+  // Permissible labels for an account: its accounts.yaml 'labels' list,
+  // which defaults to just the account name (legacy behaviour).
+  function labelsForAccount(accountName) {
+    const entry = state.config.accounts.find((a) => a.name === accountName);
+    return entry ? entry.labels || [entry.name] : [];
+  }
+
   function addFiles(fileList) {
     if (!fileList.length) return;
-    const accountNames = state.config.accounts.map((a) => a.name);
-    const lastAccount = state.files.length
-      ? state.files[state.files.length - 1].account
-      : accountNames[0];
+    const last = state.files[state.files.length - 1];
+    const account = last ? last.account : state.config.accounts[0].name;
+    const label = last ? last.label : labelsForAccount(account)[0];
     for (const file of fileList) {
-      state.files.push({ file, id: `f${state.nextFileId++}`, account: lastAccount });
+      const entry = {
+        file, id: `f${state.nextFileId++}`, account, label,
+        detect: "pending", detectInfo: "",
+      };
+      state.files.push(entry);
+      detectFormat(entry);
     }
     renderFileList();
+  }
+
+  // Fire-and-forget format auto-detection for one file row. The dropdown
+  // keeps its default until the server answers; on an unambiguous match it
+  // snaps to the detected account.
+  async function detectFormat(entry) {
+    const form = new FormData();
+    form.append("file", entry.file, entry.file.name);
+    let resp;
+    try {
+      resp = await api.postForm("/api/outflows/detect", form);
+    } catch {
+      entry.detect = null; // detection failed; behave like before the feature
+      if (state.files.includes(entry)) renderFileList();
+      return;
+    }
+    if (!state.files.includes(entry)) return; // row removed meanwhile
+
+    if (resp.account) {
+      entry.account = resp.account;
+      const allowed = labelsForAccount(entry.account);
+      if (!allowed.includes(entry.label)) entry.label = allowed[0] || "";
+      entry.detect = "ok";
+      entry.detectInfo = resp.account;
+    } else if (resp.format) {
+      // Format recognised but it maps to several accounts — user picks.
+      entry.detect = "pick";
+      entry.detectInfo = resp.format;
+    } else if ((resp.candidates || []).length > 1) {
+      entry.detect = "ambiguous";
+      entry.detectInfo = resp.candidates.join(", ");
+    } else {
+      entry.detect = "none";
+      entry.detectInfo = "";
+    }
+    renderFileList();
+  }
+
+  // Small status marker for a file row's auto-detection outcome.
+  function detectBadge(f) {
+    if (!f.detect) return null;
+    const span = document.createElement("span");
+    span.classList.add("detect-badge");
+    switch (f.detect) {
+      case "pending":
+        span.classList.add("detect-pending");
+        span.textContent = "⋯ detecting";
+        break;
+      case "ok":
+        span.classList.add("detect-ok");
+        span.textContent = `✓ ${f.detectInfo}`;
+        span.title = "Format auto-detected";
+        break;
+      case "pick":
+        span.classList.add("detect-warn");
+        span.textContent = `✓ ${f.detectInfo} — pick account`;
+        span.title = "Format detected, but several accounts use it — pick one";
+        break;
+      case "ambiguous":
+        span.classList.add("detect-warn");
+        span.textContent = "~ ambiguous";
+        span.title = `File parses as more than one format (${f.detectInfo}) — select manually`;
+        break;
+      case "none":
+        span.classList.add("detect-warn");
+        span.textContent = "? not recognised";
+        span.title = "No parser recognised this file — select the account manually";
+        break;
+      default:
+        return null;
+    }
+    return span;
   }
 
   function removeFile(id) {
@@ -165,7 +425,6 @@
     show(wrap);
     $("compile-btn").disabled = false;
 
-    const accountNames = state.config.accounts.map((a) => a.name);
     for (const f of state.files) {
       const row = document.createElement("div");
       row.className = "file-row";
@@ -173,17 +432,47 @@
       const name = document.createElement("div");
       name.className = "file-row-name";
       name.textContent = `📄 ${f.file.name}`;
+      const badge = detectBadge(f);
+      if (badge) name.appendChild(badge);
       row.appendChild(name);
 
-      const select = document.createElement("select");
-      for (const acct of accountNames) {
+      const accountSelect = document.createElement("select");
+      accountSelect.title = "Account — selects the parser format for this file";
+      for (const a of state.config.accounts) {
         const opt = document.createElement("option");
-        opt.value = acct; opt.textContent = acct;
-        if (acct === f.account) opt.selected = true;
-        select.appendChild(opt);
+        opt.value = a.name; opt.textContent = a.name;
+        if (a.name === f.account) opt.selected = true;
+        accountSelect.appendChild(opt);
       }
-      select.addEventListener("change", () => { f.account = select.value; });
-      row.appendChild(select);
+
+      const labelSelect = document.createElement("select");
+      labelSelect.title = "Label shown in the Account column";
+      const fillLabels = () => {
+        labelSelect.innerHTML = "";
+        const allowed = labelsForAccount(f.account);
+        if (!allowed.includes(f.label)) f.label = allowed[0] || "";
+        for (const lbl of allowed) {
+          const opt = document.createElement("option");
+          opt.value = lbl; opt.textContent = lbl;
+          if (lbl === f.label) opt.selected = true;
+          labelSelect.appendChild(opt);
+        }
+      };
+      fillLabels();
+
+      accountSelect.addEventListener("change", () => {
+        f.account = accountSelect.value;
+        // A manual pick supersedes whatever detection concluded.
+        if (f.detect && f.detect !== "pending") {
+          f.detect = null;
+          const old = name.querySelector(".detect-badge");
+          if (old) old.remove();
+        }
+        fillLabels();
+      });
+      labelSelect.addEventListener("change", () => { f.label = labelSelect.value; });
+      row.appendChild(accountSelect);
+      row.appendChild(labelSelect);
 
       const rm = document.createElement("button");
       rm.className = "remove-btn"; rm.type = "button"; rm.textContent = "×"; rm.title = "Remove file";
@@ -210,6 +499,7 @@
     for (const f of state.files) {
       form.append("files", f.file, f.file.name);
       form.append("accounts", f.account);
+      form.append("labels", f.label);
     }
     try {
       state.session = await api.postForm("/api/outflows/compile", form);
@@ -217,10 +507,15 @@
       // Fresh session — clear any prior overrides.
       state.unsuppressedDup = new Set();
       state.reincludedExcl = new Set();
+      state.manualExcl = new Set();
+      state.reincludedRef = new Set();
+      state.guesses = {};
       hide($("restored-notice"));
+      hide($("state-notice"));
       hide(statusEl);
       renderResults();
       saveSession();
+      fetchGuesses();
     } catch (err) {
       hide(statusEl);
       errEl.textContent = String(err.message || err);
@@ -330,12 +625,17 @@
     }
     const inRange = (r) => r.date >= from && r.date <= to;
     const rows = state.session.rows.filter(inRange);
-    const dedup = rows.filter((r) => !r.duplicate);
+    // Refunds are hidden like duplicates unless re-included via their +.
+    const dedup = rows.filter(
+      (r) => !r.duplicate && (!r.refund || r._refIncluded),
+    );
     const excluded = new Set(state.config.excluded || []);
     // A row is hidden from the dashboard iff its category is excluded AND the
-    // user hasn't re-included it individually via the ⟲ button.
-    const isHidden = (r) => excluded.has(r.category) && !r._reincluded;
-    const dashboardRows = excluded.size ? dedup.filter((r) => !isHidden(r)) : dedup;
+    // user hasn't re-included it individually via the ⟲ button — or the user
+    // excluded it by hand via the × button on the Categorised table.
+    const isHidden = (r) =>
+      (excluded.has(r.category) && !r._reincluded) || state.manualExcl.has(r._idx);
+    const dashboardRows = dedup.filter((r) => !isHidden(r));
 
     if (rows.length === 0) {
       $("empty-range").textContent = `No transactions in selected range (${from} to ${to}).`;
@@ -363,19 +663,28 @@
     } else hide(dupCap);
 
     // Exclusions caption — counts only rows that are still hidden after any
-    // per-row re-inclusions.
+    // per-row re-inclusions, plus rows excluded by hand via ×.
     const excCap = $("exclusions-caption");
-    if (excluded.size) {
-      const hiddenRows = dedup.filter(isHidden);
-      const excludedInData = [...new Set(hiddenRows.map((r) => r.category))].sort();
+    const hiddenByCat = dedup.filter(
+      (r) => excluded.has(r.category) && !r._reincluded,
+    );
+    const nManual = dedup.filter((r) => state.manualExcl.has(r._idx)).length;
+    if (hiddenByCat.length || nManual) {
+      const bits = [];
+      const excludedInData = [...new Set(hiddenByCat.map((r) => r.category))].sort();
       if (excludedInData.length) {
-        const nHidden = hiddenRows.length;
-        excCap.textContent =
-          `Hidden from dashboard: ${excludedInData.join(", ")} ` +
-          `(${nHidden} transaction${nHidden !== 1 ? "s" : ""}). ` +
-          `Downloads include all categories.`;
-        show(excCap);
-      } else hide(excCap);
+        bits.push(
+          `${excludedInData.join(", ")} (${hiddenByCat.length} ` +
+          `transaction${hiddenByCat.length !== 1 ? "s" : ""})`,
+        );
+      }
+      if (nManual) {
+        bits.push(`${nManual} excluded by hand via ×`);
+      }
+      excCap.textContent =
+        `Hidden from dashboard: ${bits.join("; ")}. ` +
+        `Downloads include all categories.`;
+      show(excCap);
     } else hide(excCap);
 
     state.scoped = { rows, dedup, dashboardRows };
@@ -387,40 +696,420 @@
   // ---- Collapsible panels (unmapped / excluded / duplicates) ----
   function renderPanels(dated, dedup, dashboardRows, excluded) {
     const unmapped = dashboardRows.filter((r) => r.category === UNCAT);
-    renderMiniPanel(
-      "unmapped-panel", "unmapped-summary", "unmapped-intro", "unmapped-rows",
-      `Unmapped transactions (${unmapped.length})`,
-      unmapped.length
-        ? "These descriptions did not match any pattern in your mapping table. " +
-          "Use the download below to grow mapping.xlsx."
-        : "Every transaction was mapped. Nice.",
-      unmapped, ["date", "description", "amount", "account"],
-    );
+    renderUnmappedPanel(unmapped);
 
-    const excludedRows = excluded.size
-      ? dedup.filter((r) => excluded.has(r.category) && !r._reincluded)
-      : [];
-    let excludedIntro;
-    if (!excluded.size) {
-      excludedIntro = "No categories are flagged as excluded in categories.txt.";
-    } else if (excludedRows.length === 0) {
-      excludedIntro = `No transactions matched any excluded categories (${[...excluded].sort().join(", ")}).`;
-    } else {
-      excludedIntro =
-        "These transactions are hidden from the dashboard view because " +
-        "their category is flagged with ,exclude in categories.txt. " +
-        "They are still included in the downloads. Click ⟲ to include a " +
-        "row in the dashboard anyway.";
+    const excludedRows = dedup.filter(
+      (r) =>
+        (excluded.has(r.category) && !r._reincluded) ||
+        state.manualExcl.has(r._idx),
+    );
+    let excludedIntro = "";
+    if (excludedRows.length === 0) {
+      excludedIntro = excluded.size
+        ? `No transactions matched any excluded categories (${[...excluded].sort().join(", ")}), and none were excluded by hand.`
+        : "No categories are flagged as excluded in categories.txt, and no transactions were excluded by hand.";
     }
     renderExcludedPanel(excludedRows, excludedIntro);
 
     const duplicates = dated.filter((r) => r.duplicate);
     renderDuplicatesPanel(duplicates);
+
+    const refunds = dated.filter(
+      (r) => r.refund && !r.duplicate && !r._refIncluded,
+    );
+    renderRefundsPanel(refunds);
+  }
+
+  function renderRefundsPanel(refunds) {
+    $("refunds-summary").textContent = `Refund transactions (${refunds.length})`;
+    const introEl = $("refunds-intro");
+    introEl.textContent = refunds.length
+      ? ""
+      : "No refund transactions in the selected range.";
+    introEl.classList.toggle("hidden", !introEl.textContent);
+
+    const wrap = $("refunds-rows");
+    wrap.innerHTML = "";
+    if (refunds.length === 0) return;
+
+    const table = document.createElement("table");
+    table.className = "mini-table";
+    table.appendChild(miniTableHead("refunds", [
+      { key: "date", label: "Date" },
+      { key: "description", label: "Description" },
+      { key: "amount", label: "Amount" },
+      { key: "account", label: "Account" },
+      { label: "", cls: "action-col" },
+    ]));
+    const tbody = document.createElement("tbody");
+    for (const r of sortPanelRows("refunds", refunds)) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
+        `<td>${escapeHtml(String(r.description ?? ""))}</td>` +
+        `<td class="amount">${fmtSGD.format(r.amount)}</td>` +
+        `<td>${escapeHtml(String(r.account ?? ""))}</td>`;
+      const actionCell = document.createElement("td");
+      actionCell.className = "action-col";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "unsuppress-btn reinclude-btn";
+      btn.title = "Include this refund in the dashboard";
+      btn.setAttribute("aria-label", "Include this refund in the dashboard");
+      btn.textContent = "+";
+      btn.addEventListener("click", () => reincludeRefund(r._idx));
+      actionCell.appendChild(btn);
+      tr.appendChild(actionCell);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+
+  function reincludeRefund(idx) {
+    if (typeof idx !== "number") return;
+    const target = state.session.rows[idx];
+    if (!target || target._refIncluded) return;
+    target._refIncluded = true;
+    state.reincludedRef.add(idx);
+    saveSession();
+    renderForDateRange();
+  }
+
+  function renderUnmappedPanel(unmapped) {
+    $("unmapped-summary").textContent = `Unmapped transactions (${unmapped.length})`;
+    const unmappedIntro = $("unmapped-intro");
+    unmappedIntro.textContent = unmapped.length
+      ? ""
+      : "Every transaction was mapped. Nice.";
+    unmappedIntro.classList.toggle("hidden", !unmappedIntro.textContent);
+
+    const wrap = $("unmapped-rows");
+    wrap.innerHTML = "";
+    if (unmapped.length === 0) return;
+
+    const table = document.createElement("table");
+    table.className = "mini-table";
+    table.appendChild(miniTableHead("unmapped", [
+      { key: "date", label: "Date" },
+      { key: "description", label: "Description" },
+      { key: "amount", label: "Amount" },
+      { label: "Guess (Rapidfuzz)" },
+      { label: "Guess (BERT)" },
+      { key: "account", label: "Account" },
+      { label: "", cls: "action-col" },
+    ]));
+
+    // One pill per engine per row, same click-to-accept flow; the engines
+    // are told apart by colour (rapidfuzz blue, BERT green).
+    const guessPill = (rowIdx, g, cls, engine) => {
+      const pill = document.createElement("button");
+      pill.type = "button";
+      pill.className = `guess-pill ${cls}`;
+      pill.textContent = `≈ ${g.category}`;
+      pill.title =
+        `${engine} matched "${g.matched}" (score ${g.score}) — ` +
+        `click to add to transaction history as ${g.category}`;
+      pill.addEventListener("click", () => addToHistory(rowIdx, g.category));
+      return pill;
+    };
+
+    const tbody = document.createElement("tbody");
+    for (const r of sortPanelRows("unmapped", unmapped)) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
+        `<td class="desc-cell">${escapeHtml(String(r.description ?? ""))}</td>` +
+        `<td class="amount">${fmtSGD.format(r.amount)}</td>`;
+
+      const g = state.guesses[r._idx] || {};
+
+      const rfCell = document.createElement("td");
+      if (g.rapidfuzz) {
+        rfCell.appendChild(
+          guessPill(r._idx, g.rapidfuzz, "guess-pill--rf", "Rapidfuzz"),
+        );
+      }
+      tr.appendChild(rfCell);
+
+      const bertCell = document.createElement("td");
+      if (g.transformer) {
+        bertCell.appendChild(
+          guessPill(r._idx, g.transformer, "guess-pill--bert", "BERT"),
+        );
+      } else if (state.transformer && !state.transformer.available) {
+        bertCell.className = "guess-cell-off";
+        bertCell.textContent = "—";
+        bertCell.title = state.transformer.hint || "Transformer engine unavailable.";
+      }
+      tr.appendChild(bertCell);
+
+      const acctCell = document.createElement("td");
+      acctCell.textContent = String(r.account ?? "");
+      tr.appendChild(acctCell);
+
+      const actionCell = document.createElement("td");
+      actionCell.className = "action-col";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "unsuppress-btn addhist-btn";
+      btn.title = "Add to transaction history with a category";
+      btn.setAttribute(
+        "aria-label",
+        "Add this transaction to the transaction history with a category",
+      );
+      btn.textContent = "+H";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openCategoryMenu(
+          btn.getBoundingClientRect(),
+          (cat) => addToHistory(r._idx, cat),
+        );
+      });
+      actionCell.appendChild(btn);
+      tr.appendChild(actionCell);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+  }
+
+  // ---- +H category dropdown ----
+  // Appended to <body> (the panel wrapper clips overflow) and anchored to
+  // the clicked button. Only one open at a time.
+  let openMenu = null;
+
+  function closeCategoryMenu() {
+    if (!openMenu) return;
+    openMenu.remove();
+    openMenu = null;
+    document.removeEventListener("click", closeCategoryMenu);
+    document.removeEventListener("keydown", onMenuKeydown);
+    window.removeEventListener("scroll", onMenuScroll, true);
+  }
+
+  function onMenuKeydown(e) {
+    if (e.key === "Escape") closeCategoryMenu();
+  }
+
+  // Close when the page scrolls — but NOT when the scroll happens inside
+  // the menu itself (scrolling the category list must keep it open).
+  function onMenuScroll(e) {
+    if (openMenu && openMenu.contains(e.target)) return;
+    closeCategoryMenu();
+  }
+
+  function openCategoryMenu(rect, onPick) {
+    closeCategoryMenu();
+    const cats = (state.config.categories || []).filter((c) => c !== UNCAT);
+    if (!cats.length) {
+      toast("No categories found in categories.txt.", "error");
+      return;
+    }
+
+    const menu = document.createElement("div");
+    menu.className = "cat-menu";
+    menu.setAttribute("role", "menu");
+    for (const cat of cats) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "cat-menu-item";
+      item.setAttribute("role", "menuitem");
+      item.textContent = cat;
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeCategoryMenu();
+        onPick(cat);
+      });
+      menu.appendChild(item);
+    }
+    menu.addEventListener("click", (e) => e.stopPropagation());
+
+    document.body.appendChild(menu);
+    // Open on whichever side of the anchor has more room, and clamp the
+    // menu's height to that room so the full list is reachable by scroll.
+    const spaceBelow = window.innerHeight - rect.bottom - 12;
+    const spaceAbove = rect.top - 12;
+    const openBelow = spaceBelow >= Math.min(240, spaceAbove) || spaceBelow >= spaceAbove;
+    menu.style.maxHeight = `${Math.max(120, openBelow ? spaceBelow : spaceAbove)}px`;
+    const menuRect = menu.getBoundingClientRect();
+    const top = openBelow
+      ? rect.bottom + 4
+      : Math.max(8, rect.top - menuRect.height - 4);
+    let left = rect.right - menuRect.width;
+    if (left < 8) left = 8;
+    menu.style.top = `${top}px`;
+    menu.style.left = `${left}px`;
+
+    openMenu = menu;
+    // Deferred so the click that opened the menu doesn't immediately close it.
+    setTimeout(() => {
+      document.addEventListener("click", closeCategoryMenu);
+      document.addEventListener("keydown", onMenuKeydown);
+      window.addEventListener("scroll", onMenuScroll, true);
+    }, 0);
+  }
+
+  // ---- Highlight-to-map ----
+  // Selecting text inside a description cell in the Unmapped panel and
+  // releasing the mouse offers the category menu; the picked category plus
+  // the highlighted substring become a new mapping.xlsx/mapping.json rule.
+  // The highlight itself is custom: native ::selection is transparent in
+  // desc-cells and .sel-bubble overlays are drawn live over the selection's
+  // client rects instead, giving rounded edges and a raised look.
+  let selBubbles = [];
+
+  function clearSelectionBubbles() {
+    for (const b of selBubbles) b.remove();
+    selBubbles = [];
+  }
+
+  function descCellOf(node) {
+    const el = node && (node.nodeType === 1 ? node : node.parentElement);
+    return el ? el.closest(".desc-cell") : null;
+  }
+
+  // Returns the selection iff it lies within a single description cell.
+  function descCellSelection() {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+    const anchorCell = descCellOf(sel.anchorNode);
+    if (!anchorCell || anchorCell !== descCellOf(sel.focusNode)) return null;
+    return sel;
+  }
+
+  // Browsers snap drag-selections to word boundaries including the trailing
+  // space; shrink the selection to its trimmed extent so the bubble shows
+  // exactly the substring that would be stored as a rule.
+  function trimSelectionEdges(sel) {
+    const range = sel.getRangeAt(0);
+    const sc = range.startContainer, ec = range.endContainer;
+    if (sc.nodeType !== Node.TEXT_NODE || ec.nodeType !== Node.TEXT_NODE) return;
+    let s = range.startOffset, e = range.endOffset;
+    const sText = sc.textContent, eText = ec.textContent;
+    while (e > 0 && /\s/.test(eText[e - 1]) && !(sc === ec && e <= s)) e--;
+    while (s < sText.length && /\s/.test(sText[s]) && !(sc === ec && s >= e)) s++;
+    if (s === range.startOffset && e === range.endOffset) return;
+    try {
+      range.setStart(sc, s);
+      range.setEnd(ec, e);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch { /* leave the selection as-is */ }
+  }
+
+  function renderSelectionBubbles() {
+    clearSelectionBubbles();
+    const sel = descCellSelection();
+    if (!sel) return;
+    // One rect per rendered line fragment (normally just one).
+    for (const r of sel.getRangeAt(0).getClientRects()) {
+      if (r.width < 1) continue;
+      const b = document.createElement("div");
+      b.className = "sel-bubble";
+      b.style.top = `${r.top - 2}px`;
+      b.style.left = `${r.left - 3}px`;
+      b.style.width = `${r.width + 6}px`;
+      b.style.height = `${r.height + 4}px`;
+      document.body.appendChild(b);
+      selBubbles.push(b);
+    }
+  }
+
+  function wireHighlightToMap() {
+    // Live bubble while the mouse is held down and the selection grows.
+    document.addEventListener("selectionchange", renderSelectionBubbles);
+    // Fixed-position bubbles go stale on scroll; drop them (the selection
+    // gesture is over by then or restarts on the next selectionchange).
+    window.addEventListener("scroll", clearSelectionBubbles, true);
+
+    $("unmapped-rows").addEventListener("mouseup", () => {
+      // Deferred so the browser has finalised the selection, and so the
+      // menu's own document-click close handler doesn't race this event.
+      setTimeout(() => {
+        const sel = descCellSelection();
+        if (!sel) return;
+        trimSelectionEdges(sel);
+        renderSelectionBubbles();
+        const text = sel.toString().trim();
+        if (text.length < 2) return;
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        openCategoryMenu(rect, (cat) => addMappingRule(text, cat));
+      }, 0);
+    });
+  }
+
+  async function addMappingRule(substring, category) {
+    let resp;
+    try {
+      resp = await api.postJson(
+        `/api/outflows/mapping/add-rule/${state.session.session_id}`,
+        { substring, category },
+      );
+    } catch {
+      return; // api.js already toasted the error
+    }
+    for (const idx of resp.updated_idx || []) {
+      const r = state.session.rows[idx];
+      if (r) {
+        r.category = resp.category;
+        r.matched_pattern = resp.substring;
+      }
+    }
+    const n = (resp.updated_idx || []).length;
+    const verb =
+      resp.status === "updated" ? "Updated mapping rule"
+      : resp.status === "unchanged" ? "Mapping rule already exists:"
+      : "Added mapping rule";
+    toast(
+      `${verb} "${resp.substring}" → ${resp.category}` +
+      (n ? ` — ${n} row${n !== 1 ? "s" : ""} recategorised.` : "."),
+      "info",
+    );
+    for (const w of resp.warnings || []) toast(w, "info", 6000);
+    try { window.getSelection().removeAllRanges(); } catch { /* ignore */ }
+    clearSelectionBubbles();
+    saveSession();
+    renderForDateRange();
+    fetchGuesses(); // rows recategorised by the new rule leave the panel
+  }
+
+  async function addToHistory(rowIdx, category) {
+    const row = state.session.rows[rowIdx];
+    if (!row) return;
+    let resp;
+    try {
+      resp = await api.postJson(
+        `/api/outflows/history/categorise/${state.session.session_id}`,
+        { row_idx: rowIdx, category },
+      );
+    } catch {
+      return; // api.js already toasted the error
+    }
+    for (const idx of resp.updated_idx || []) {
+      const r = state.session.rows[idx];
+      if (r) {
+        r.category = resp.category;
+        r.matched_pattern = String(r.description ?? "").trim();
+      }
+    }
+    const n = (resp.updated_idx || []).length;
+    toast(
+      `${resp.status === "updated" ? "Updated" : "Added"} ` +
+      `"${row.description}" in transaction history as ${resp.category}` +
+      (n > 1 ? ` — ${n} matching rows recategorised.` : "."),
+      "info",
+    );
+    saveSession();
+    renderForDateRange();
+    fetchGuesses(); // the new history entry may improve remaining guesses
   }
 
   function renderExcludedPanel(excludedRows, intro) {
     $("excluded-summary").textContent = `Excluded transactions (${excludedRows.length})`;
-    $("excluded-intro").textContent = intro;
+    const introEl = $("excluded-intro");
+    introEl.textContent = intro;
+    introEl.classList.toggle("hidden", !intro);
 
     const wrap = $("excluded-rows");
     wrap.innerHTML = "";
@@ -428,14 +1117,16 @@
 
     const table = document.createElement("table");
     table.className = "mini-table";
-    table.innerHTML =
-      "<thead><tr>" +
-      "<th>Date</th><th>Description</th><th>Amount</th>" +
-      "<th>Category</th><th>Account</th>" +
-      "<th class=\"action-col\"></th>" +
-      "</tr></thead>";
+    table.appendChild(miniTableHead("excluded", [
+      { key: "date", label: "Date" },
+      { key: "description", label: "Description" },
+      { key: "amount", label: "Amount" },
+      { key: "category", label: "Category" },
+      { key: "account", label: "Account" },
+      { label: "", cls: "action-col" },
+    ]));
     const tbody = document.createElement("tbody");
-    for (const r of excludedRows) {
+    for (const r of sortPanelRows("excluded", excludedRows)) {
       const tr = document.createElement("tr");
       tr.innerHTML =
         `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
@@ -447,11 +1138,14 @@
       actionCell.className = "action-col";
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "unsuppress-btn";
+      btn.className = "unsuppress-btn reinclude-btn";
       btn.title = "Include this row in the dashboard";
       btn.setAttribute("aria-label", "Include this excluded transaction in the dashboard");
-      btn.textContent = "⟲";
-      btn.addEventListener("click", () => reincludeExcluded(r._idx));
+      btn.textContent = "+";
+      btn.addEventListener("click", () => {
+        if (state.manualExcl.has(r._idx)) unexcludeRow(r._idx);
+        else reincludeExcluded(r._idx);
+      });
       actionCell.appendChild(btn);
       tr.appendChild(actionCell);
       tbody.appendChild(tr);
@@ -470,6 +1164,20 @@
     renderForDateRange();
   }
 
+  // ---- Manual per-row exclusion (× on the Categorised table) ----
+  function excludeRow(idx) {
+    if (typeof idx !== "number" || !state.session.rows[idx]) return;
+    state.manualExcl.add(idx);
+    saveSession();
+    renderForDateRange();
+  }
+
+  function unexcludeRow(idx) {
+    if (!state.manualExcl.delete(idx)) return;
+    saveSession();
+    renderForDateRange();
+  }
+
   function renderDuplicatesPanel(duplicates) {
     $("duplicates-summary").textContent = `Duplicate transactions (${duplicates.length})`;
     $("duplicates-intro").textContent = duplicates.length
@@ -484,13 +1192,15 @@
 
     const table = document.createElement("table");
     table.className = "mini-table";
-    table.innerHTML =
-      "<thead><tr>" +
-      "<th>Date</th><th>Description</th><th>Amount</th><th>Account</th>" +
-      "<th class=\"action-col\"></th>" +
-      "</tr></thead>";
+    table.appendChild(miniTableHead("duplicates", [
+      { key: "date", label: "Date" },
+      { key: "description", label: "Description" },
+      { key: "amount", label: "Amount" },
+      { key: "account", label: "Account" },
+      { label: "", cls: "action-col" },
+    ]));
     const tbody = document.createElement("tbody");
-    for (const r of duplicates) {
+    for (const r of sortPanelRows("duplicates", duplicates)) {
       const tr = document.createElement("tr");
       tr.innerHTML =
         `<td>${escapeHtml(String(r.date ?? ""))}</td>` +
@@ -525,28 +1235,57 @@
     renderForDateRange();
   }
 
-  function renderMiniPanel(panelId, summaryId, introId, rowsId, title, intro, rows, cols) {
-    $(summaryId).textContent = title;
-    $(introId).textContent = intro;
-    const wrap = $(rowsId);
-    if (rows.length === 0) { wrap.innerHTML = ""; return; }
-    const headers = {
-      date: "Date", description: "Description", amount: "Amount",
-      category: "Category", account: "Account",
-    };
-    let html = '<table class="mini-table"><thead><tr>';
-    for (const c of cols) html += `<th>${headers[c]}</th>`;
-    html += "</tr></thead><tbody>";
-    for (const r of rows) {
-      html += "<tr>";
-      for (const c of cols) {
-        if (c === "amount") html += `<td class="amount">${fmtSGD.format(r[c])}</td>`;
-        else html += `<td>${escapeHtml(String(r[c] ?? ""))}</td>`;
+  // ---- Panel sorting (unmapped / excluded / duplicates / refunds) ----
+  // Click a column header to sort that panel; click again to flip
+  // direction. Per-panel state, persisted with the session.
+
+  function panelSortFor(panel) {
+    return (state.panelSort || {})[panel] || null;
+  }
+
+  function togglePanelSort(panel, key) {
+    if (!state.panelSort) state.panelSort = {};
+    const cur = state.panelSort[panel];
+    state.panelSort[panel] =
+      cur && cur.key === key ? { key, dir: -cur.dir } : { key, dir: 1 };
+    saveSession();
+    renderForDateRange();
+  }
+
+  function sortPanelRows(panel, rows) {
+    const sort = panelSortFor(panel);
+    if (!sort) return rows;
+    const { key, dir } = sort;
+    const val = (r) =>
+      key === "amount" ? (r.amount ?? 0) : String(r[key] ?? "").toLowerCase();
+    return [...rows].sort((a, b) => {
+      const va = val(a), vb = val(b);
+      return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
+    });
+  }
+
+  // Build a thead with sortable headers. cols: [{key, label}] — an entry
+  // without a key (e.g. Guess, action column) is not sortable.
+  function miniTableHead(panel, cols) {
+    const sort = panelSortFor(panel);
+    const thead = document.createElement("thead");
+    const tr = document.createElement("tr");
+    for (const c of cols) {
+      const th = document.createElement("th");
+      if (c.cls) th.className = c.cls;
+      th.textContent = c.label;
+      if (c.key) {
+        th.classList.add("sortable");
+        th.title = `Sort by ${c.label}`;
+        if (sort && sort.key === c.key) {
+          th.textContent = `${c.label} ${sort.dir === 1 ? "▲" : "▼"}`;
+        }
+        th.addEventListener("click", () => togglePanelSort(panel, c.key));
       }
-      html += "</tr>";
+      tr.appendChild(th);
     }
-    html += "</tbody></table>";
-    wrap.innerHTML = html;
+    thead.appendChild(tr);
+    return thead;
   }
 
   function escapeHtml(s) {
@@ -615,6 +1354,25 @@
       if (state.scoped) renderTable(state.scoped.dashboardRows);
       saveSession();
     });
+    $("filter-search").addEventListener("input", () => {
+      state.tableFilter.search = $("filter-search").value;
+      if (state.scoped) renderTable(state.scoped.dashboardRows);
+      saveSession();
+    });
+    $("toggle-matched").addEventListener("change", () => {
+      state.tableFilter.matched = $("toggle-matched").checked;
+      syncMatchedColumn();
+      saveSession();
+    });
+  }
+
+  // Show/hide the Matched pattern column and keep the checkbox in sync.
+  function syncMatchedColumn() {
+    const on = !!state.tableFilter.matched;
+    $("toggle-matched").checked = on;
+    if (!state.table) return;
+    if (on) state.table.showColumn("matched_pattern");
+    else state.table.hideColumn("matched_pattern");
   }
 
   function renderTable(rows) {
@@ -625,6 +1383,16 @@
     let view = rows;
     if (category !== "All") view = view.filter((r) => r.category === category);
     if (account !== "All") view = view.filter((r) => r.account === account);
+    const q = (state.tableFilter.search || "").trim().toLowerCase();
+    if (q) {
+      view = view.filter((r) =>
+        String(r.description ?? "").toLowerCase().includes(q));
+    }
+    // Restored sessions carry the search text in state, not the input.
+    const searchEl = $("filter-search");
+    if (searchEl.value !== (state.tableFilter.search || "")) {
+      searchEl.value = state.tableFilter.search || "";
+    }
 
     if (!state.table) {
       state.table = new Tabulator("#transactions-table", {
@@ -640,12 +1408,22 @@
             formatter: (cell) => fmtSGD.format(cell.getValue()) },
           { title: "Category", field: "category", width: 160 },
           { title: "Account", field: "account", width: 160 },
-          { title: "Matched pattern", field: "matched_pattern", minWidth: 140 },
+          { title: "Matched pattern", field: "matched_pattern", minWidth: 140,
+            visible: !!state.tableFilter.matched },
+          { title: "", field: "_idx", width: 52, hozAlign: "center",
+            headerSort: false,
+            formatter: () =>
+              '<button type="button" class="unsuppress-btn row-excl-btn" ' +
+              'title="Exclude this transaction from the dashboard" ' +
+              'aria-label="Exclude this transaction from the dashboard">' +
+              "×</button>",
+            cellClick: (e, cell) => excludeRow(cell.getRow().getData()._idx) },
         ],
       });
     } else {
       state.table.replaceData(view);
     }
+    syncMatchedColumn();
   }
 
   function refreshFilterOptions(selectId, field, rows) {
@@ -765,10 +1543,12 @@
       const res = await api.postJson(`/api/outflows/db/commit/${sessionId()}`, {
         start_date: state.dateRange.from,
         end_date: state.dateRange.to,
-        // Send the client-side ⟲ overrides so what the user sees is what
+        // Send the client-side ⟲/× overrides so what the user sees is what
         // gets committed. Server rebuilds the visible row set with these.
         unsuppressed_dup_idx: [...state.unsuppressedDup],
         reincluded_excl_idx: [...state.reincludedExcl],
+        excluded_row_idx: [...state.manualExcl],
+        reincluded_refund_idx: [...state.reincludedRef],
       });
       const { inserted, updated, total_in_db } = res;
       const parts = [];
