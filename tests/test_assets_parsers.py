@@ -265,3 +265,49 @@ def test_manual_missing_resolver_degrades(context):
     out = out.set_index("Asset Name")
     assert out.loc["Fabricated Auto Upper", "Balance (Local)"] == 111.0
     assert out.loc["Fabricated Auto Lower", "Balance (Local)"] == 222.0
+
+
+def test_blank_mapping_round_trip_stays_unmapped(tmp_path, monkeypatch):
+    """# A-1 (round trip): append_unmapped_to_mappings writes a BLANK
+    value; load_config must hand it back as "" — not NaN, whose str() is
+    the truthy "nan" that slips past the parsers' blank guard and turns
+    the asset class into the literal string "nan" (V3.1 discovered
+    defect: na_filter=False in load_config)."""
+    from abicus.apps.assets import pipeline
+
+    monkeypatch.setattr(pipeline, "CONFIG_DIR", tmp_path)
+    (tmp_path / "sources.yaml").write_text("sources: {}\n")
+    for name, col in [
+        ("mapping_asset_class.csv", "Asset Class"),
+        ("mapping_us_situs.csv", "US Situs Flag"),
+    ]:
+        (tmp_path / name).write_text(
+            f"Underlying Instrument Description,{col}\nFabricated Seed,Seeded\n"
+        )
+    (tmp_path / "mapping_broad_asset_class.csv").write_text(
+        "Asset Class,Broad Asset Class\nSeeded,Other\n"
+    )
+    (tmp_path / "asset_class_labels.csv").write_text("Asset Class,Label\n")
+
+    master = pd.DataFrame({
+        "Asset Name": ["Fabricated Fund X"],
+        "Asset Class": ["UNMAPPED"],
+        "US Situs Flag": ["UNMAPPED"],
+    })
+    pipeline.append_unmapped_to_mappings(master)
+
+    cfg = pipeline.load_config()
+    for key, col in [
+        ("mapping_asset_class", "Asset Class"),
+        ("mapping_us_situs", "US Situs Flag"),
+    ]:
+        table = cfg[key]
+        row = table[table["Underlying Instrument Description"] == "Fabricated Fund X"]
+        value = row[col].iloc[0]
+        # The blank survives as an empty string...
+        assert value == "" and isinstance(value, str)
+        # ...so the parsers' shared guard falls through to UNMAPPED.
+        mapped = dict(
+            zip(table["Underlying Instrument Description"], table[col])
+        ).get("Fabricated Fund X", "")
+        assert not (mapped and str(mapped).strip())

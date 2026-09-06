@@ -62,8 +62,17 @@ def load_config() -> dict:
     with open(CONFIG_DIR / "sources.yaml") as f:
         sources_config = yaml.safe_load(f)
 
-    mapping_asset_class = pd.read_csv(CONFIG_DIR / "mapping_asset_class.csv")
-    mapping_us_situs = pd.read_csv(CONFIG_DIR / "mapping_us_situs.csv")
+    # na_filter=False: append_unmapped_to_mappings writes BLANK-valued rows
+    # for the user to fill in later, and the parsers' "blank counts as
+    # unmapped" guard only works on strings — a default read turns blank
+    # into NaN, whose str() is the truthy "nan", and the asset class comes
+    # out as the literal string "nan" instead of UNMAPPED (A-1).
+    mapping_asset_class = pd.read_csv(
+        CONFIG_DIR / "mapping_asset_class.csv", na_filter=False
+    )
+    mapping_us_situs = pd.read_csv(
+        CONFIG_DIR / "mapping_us_situs.csv", na_filter=False
+    )
     mapping_broad_ac = pd.read_csv(CONFIG_DIR / "mapping_broad_asset_class.csv")
     asset_class_labels = pd.read_csv(CONFIG_DIR / "asset_class_labels.csv")
 
