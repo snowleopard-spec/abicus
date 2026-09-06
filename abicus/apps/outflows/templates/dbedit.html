@@ -13,15 +13,6 @@
 {% endblock %}
 
 {% block content %}
-<p class="caption" style="margin-top:0;">
-  Edit <code>data/transactions.db</code> directly — the rolling store the
-  Monthly Breakdown reads. <strong>E</strong> changes a row's category;
-  <strong>×</strong> deletes the row (with a brief undo). Changes apply
-  immediately. Note: re-committing the same period from Spending Review
-  re-applies that session's rows, which can re-insert a deleted row or
-  overwrite an edited category.
-</p>
-
 <section class="card">
   <h2>Database Transactions</h2>
   <div class="table-filters">
@@ -45,6 +36,10 @@
       To
       <input type="date" id="filter-to">
     </label>
+    <button type="button" id="db-backup-btn" class="hist-btn db-backup-btn"
+            title="Save a snapshot of the database to data/backups/">
+      Back up DB
+    </button>
   </div>
   <div id="db-summary" class="caption"></div>
   <div id="db-rows" class="mini-table-wrap dbedit-table-wrap"></div>
@@ -55,13 +50,6 @@
 
 <section class="card">
   <h2>History</h2>
-  <p class="caption" style="margin-top:0;">
-    Every database write is recorded as a commit in a local-only history
-    (<code>data/history/</code>). <strong>View changes</strong> shows the
-    rows a write touched; <strong>Roll back</strong> restores the database
-    to that commit's state — the current state is snapshotted first, so a
-    rollback is itself reversible.
-  </p>
   <div id="hist-rows" class="mini-table-wrap"></div>
   <div id="hist-empty" class="banner banner-info hidden">
     No history yet — the first database write creates it.
