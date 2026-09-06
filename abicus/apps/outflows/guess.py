@@ -54,7 +54,7 @@ CONFIG_PATH = Path(__file__).parent / "config" / "guess.yaml"
 
 DEFAULT_MIN_SCORE = 0.90
 DEFAULT_MIN_CANDIDATE_LENGTH = 5
-DEFAULT_EMBED_MIN_SCORE = 0.85  # transformer engine; calibrated at M7
+DEFAULT_EMBED_MIN_SCORE = 0.90  # transformer engine; calibrated at V3 M7
 
 
 @dataclass(frozen=True)

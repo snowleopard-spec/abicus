@@ -171,13 +171,15 @@ dependencies.
   time; on ImportError the API reports the engine unavailable with the
   R7 hint and the UI greys the toggle position out.
 
-**API & UI:** `api_guess` (`router.py`, `POST /guess/{session_id}`) gains
-an `engine` parameter (`rapidfuzz` | `transformer` | `both`, default
-`rapidfuzz`). Response per row carries per-engine
-`{category, matched, score}` blocks. The review page gets a three-state
-toggle; in `both` mode each unmapped row shows two pills side by side
-(engine-tagged, each with its confidence), either one click-to-accept —
-same accept flow as today (R8).
+**API & UI** *(revised 2026-09-06 — the user's design supersedes the
+original three-state toggle)*: `api_guess` always runs both engines over
+the one shared corpus; the response carries per-row per-engine
+`{category, matched, score}` blocks plus a
+`transformer: {available, hint}` block. The Unmapped panel shows two
+columns — **Guess (Rapidfuzz)** and **Guess (BERT)** — each with the
+same click-to-accept pill flow (R8), told apart by colour (rapidfuzz
+blue, BERT green). With the `.[suggest]` extra missing, the BERT column
+shows a muted placeholder whose hover carries the install hint (R7).
 
 ## 6. Milestones
 
@@ -224,13 +226,19 @@ Verify each "Done when" before continuing. One milestone per session.
   rapidfuzz numbers on the same day's corpus — in this file and the
   release notes. **Done when:** the numbers are written here and the
   threshold is in `guess.yaml`'s documented defaults.
-  *Calibration results (fill at M7): embed_min_score = __ → __% precision
-  at __% coverage, corpus n = __; rapidfuzz same-corpus: __% / __%.*
-- **M8 — Toggle UI.** `engine` parameter on `api_guess`; three-state
-  toggle on the review page; `both` mode renders side-by-side engine-
-  tagged pills, either click-to-accept. **Done when:** all three states
-  work in a manual session against real data; `both` visibly shows the
-  engines agreeing and disagreeing; suite green.
+  *Calibration results (2026-09-06, leave-one-out, corpus n = 983):
+  **embed_min_score = 0.90 → 97.7% precision at 78.9% coverage.**
+  Full sweep: 0.85 → 95.1%/86.0%, 0.88 → 96.9%/81.7%, 0.92 → 98.1%/75.0%,
+  0.95 → 98.3%/48.9%, 0.97 → 100%/15.8%. Rapidfuzz on the same day's
+  corpus: 84.5%/72.7% at its 0.90 default (deployed 0.80 → 77.5%/93.6%).
+  The transformer engine strictly dominates rapidfuzz at every threshold
+  on this corpus — higher precision AND higher coverage.*
+- **M8 — Two-column guess UI** *(revised — see §5)*. Per-engine blocks
+  on `api_guess`; Guess (Rapidfuzz) and Guess (BERT) columns in the
+  Unmapped panel, colour-coded, both click-to-accept. **Done when:** a
+  manual session against real data visibly shows the engines agreeing
+  and disagreeing across the two columns; the missing-extra placeholder
+  carries the install hint; suite green.
 - **M9 — Release.** Version bump to 3.0.0, release-notes entry
   (Feature A + B, calibration numbers, M3 restore drill note), this spec's
   status line flipped to implemented. **Done when:** notes and tag match
