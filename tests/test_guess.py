@@ -126,17 +126,77 @@ def test_guess_endpoint(app, monkeypatch):
         "duplicate": [False, False, False],
         "pre_categorised": [False, False, False],
     })
+    # Transformer engine off: the rapidfuzz pills must be unaffected and
+    # the response must carry the install hint (R7 degradation).
+    monkeypatch.setattr(outflows.guess_embed, "available", lambda: False)
+
     outflows.SESSIONS["test-guess"] = {"df": df}
     try:
         c = TestClient(app)
         r = c.post("/api/outflows/guess/test-guess")
         assert r.status_code == 200, r.text
-        guesses = r.json()["guesses"]
+        body = r.json()
+        guesses = body["guesses"]
         # Row 0 matches its noisy variant; row 1 gets no guess; row 2 is
         # already categorised so it is not scored at all.
         assert set(guesses) == {"0"}
-        assert guesses["0"]["category"] == "Groceries"
-        assert guesses["0"]["matched"] == "NTUC FP-BEDOK"
-        assert guesses["0"]["score"] == 1.0
+        assert guesses["0"]["rapidfuzz"]["category"] == "Groceries"
+        assert guesses["0"]["rapidfuzz"]["matched"] == "NTUC FP-BEDOK"
+        assert guesses["0"]["rapidfuzz"]["score"] == 1.0
+        assert guesses["0"]["transformer"] is None
+        assert body["transformer"]["available"] is False
+        assert "suggest" in body["transformer"]["hint"]
     finally:
         outflows.SESSIONS.pop("test-guess", None)
+
+
+def test_guess_endpoint_both_engines(app, monkeypatch):
+    """With the transformer engine available (stubbed), each row carries
+    per-engine blocks — including a transformer-only guess on a row
+    rapidfuzz can't match."""
+    from abicus.apps.outflows import router as outflows
+
+    monkeypatch.setattr(
+        outflows.db, "load_description_categories",
+        lambda: [("NTUC FP-BEDOK", "Groceries")],
+    )
+    monkeypatch.setattr(
+        outflows, "load_history_mapping",
+        lambda path, valid_categories=None: ({}, []),
+    )
+    monkeypatch.setattr(outflows, "load_categories", lambda: ({"Groceries"}, set()))
+    monkeypatch.setattr(outflows.guess_embed, "available", lambda: True)
+
+    def fake_batch(descs, corpus, cfg):
+        by_meaning = {
+            "COLD STORAGE": {
+                "category": "Groceries", "matched": "NTUC FP-BEDOK",
+                "score": 0.91,
+            },
+        }
+        return [by_meaning.get(d) for d in descs]
+
+    monkeypatch.setattr(outflows.guess_embed, "batch_guess", fake_batch)
+
+    df = pd.DataFrame({
+        "date": pd.to_datetime(["2026-08-01", "2026-08-02"]),
+        "description": ["NTUC FP-BEDOK S9999", "COLD STORAGE"],
+        "amount": [1.0, 2.0],
+        "account": ["A", "A"],
+        "category": ["Uncategorised", "Uncategorised"],
+        "matched_pattern": ["", ""],
+        "duplicate": [False, False],
+        "pre_categorised": [False, False],
+    })
+    outflows.SESSIONS["test-guess-both"] = {"df": df}
+    try:
+        c = TestClient(app)
+        body = c.post("/api/outflows/guess/test-guess-both").json()
+        assert body["transformer"] == {"available": True, "hint": None}
+        g = body["guesses"]
+        assert g["0"]["rapidfuzz"]["category"] == "Groceries"
+        assert g["0"]["transformer"] is None
+        assert g["1"]["rapidfuzz"] is None  # no spelling overlap
+        assert g["1"]["transformer"]["score"] == 0.91  # meaning match
+    finally:
+        outflows.SESSIONS.pop("test-guess-both", None)

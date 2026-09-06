@@ -9,6 +9,16 @@ description = "Local-only personal-finance dashboard unifying four sub-apps unde
 requires-python = ">=3.11"
 readme = "README.md"
 
+# Feature B's transformer guess engine (spec R7): sentence-transformers
+# drags in torch (~2 GB installed), so it is an optional extra — the base
+# app stays dependency-light and degrades to rapidfuzz-only guessing with
+# an install hint. Enable with: pip install -e '.[suggest]'
+[project.optional-dependencies]
+suggest = [
+    "sentence-transformers>=3.0,<6",
+    "numpy>=1.26",
+]
+
 [tool.setuptools.packages.find]
 include = ["abicus*"]
 

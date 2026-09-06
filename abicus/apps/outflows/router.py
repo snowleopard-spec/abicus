@@ -15,7 +15,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from abicus.apps.outflows import db, db_history, pdf_export
+from abicus.apps.outflows import db, db_history, guess_embed, pdf_export
 from abicus.apps.outflows.accounts import load_accounts
 from abicus.apps.outflows.build_mapping import (
     build_mapping_if_changed,
@@ -705,11 +705,19 @@ def api_mapping_add_rule(session_id: str, body: MappingAddRuleBody):
 
 @api_router.post("/guess/{session_id}")
 def api_guess(session_id: str):
-    """Best-guess categories for the session's unmapped rows, scored with
-    guess.py's free-deletion distance against the description→category
-    pairs in transactions.db and transaction_history.xlsx. Returns
-    {"guesses": {row_idx: {category, matched, score}}} — rows with no
-    guess clearing the threshold are simply absent."""
+    """Best-guess categories for the session's unmapped rows, from BOTH
+    engines against one shared corpus (transactions.db +
+    transaction_history.xlsx pairs):
+
+      rapidfuzz    guess.py's free-deletion distance — matches by spelling
+      transformer  guess_embed.py's bge-small cosine NN — matches by
+                   meaning; None per-row below threshold, and skipped
+                   entirely (with an install hint) when the optional
+                   `.[suggest]` ML stack isn't installed (R7)
+
+    Returns {"guesses": {row_idx: {"rapidfuzz": g|null, "transformer":
+    g|null}}, "transformer": {"available": bool, "hint": str|null}} —
+    rows where neither engine clears its threshold are simply absent."""
     state = _get_session(session_id)
 
     try:
@@ -727,26 +735,50 @@ def api_guess(session_id: str):
     except ValueError:
         history_map = {}
 
+    t_available = guess_embed.available()
+    t_hint = None if t_available else guess_embed.INSTALL_HINT
+
     corpus = build_corpus(
         db.load_description_categories(),
         [(desc, cat) for desc, cat in history_map.items()],
         valid_categories=valid_cats,
     )
     if not corpus:
-        return {"guesses": {}}
+        return {
+            "guesses": {},
+            "transformer": {"available": t_available, "hint": t_hint},
+        }
 
     df: pd.DataFrame = state["df"]
     unmapped = df[(df["category"] == UNCATEGORISED) & ~_refund_col(df)]
+    idxs = [int(i) for i in unmapped.index]
+    descs = [str(d) for d in unmapped["description"]]
+
+    rf_cache: dict[str, dict | None] = {}  # per distinct description
+    rf_results = []
+    for desc in descs:
+        if desc not in rf_cache:
+            rf_cache[desc] = best_guess(desc, corpus, cfg)
+        rf_results.append(rf_cache[desc])
+
+    t_results: list[dict | None] = [None] * len(descs)
+    if t_available and descs:
+        try:
+            t_results = guess_embed.batch_guess(descs, corpus, cfg)
+        except Exception as e:
+            # Meaning-matching is best-effort: a model download failure or
+            # broken install must not take the rapidfuzz pills down with it.
+            t_available = False
+            t_hint = f"Transformer engine failed: {e}"
 
     guesses: dict[int, dict] = {}
-    cache: dict[str, dict | None] = {}  # per distinct description
-    for idx, desc in unmapped["description"].items():
-        key = str(desc)
-        if key not in cache:
-            cache[key] = best_guess(key, corpus, cfg)
-        if cache[key] is not None:
-            guesses[int(idx)] = cache[key]
-    return {"guesses": guesses}
+    for idx, rf, t in zip(idxs, rf_results, t_results):
+        if rf is not None or t is not None:
+            guesses[idx] = {"rapidfuzz": rf, "transformer": t}
+    return {
+        "guesses": guesses,
+        "transformer": {"available": t_available, "hint": t_hint},
+    }
 
 
 class HistoryCategoriseBody(BaseModel):

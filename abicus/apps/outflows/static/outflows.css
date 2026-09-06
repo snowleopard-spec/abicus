@@ -123,23 +123,42 @@ code {
    option text each row happens to show. */
 .file-row select:first-of-type { width: 8rem; }   /* account */
 .file-row select:last-of-type { width: 14rem; }   /* label */
-/* Category guess pill in the Unmapped panel — click to accept */
+/* Category guess pills in the Unmapped panel — click to accept. One
+   colour scheme per engine: Rapidfuzz blue, BERT green. */
 .guess-pill {
   display: inline-block;
   padding: 0.12rem 0.55rem;
   border-radius: 999px;
-  border: 1px solid #9FB4D0;
-  background: #E3EBF5;
-  color: #3D6491;
   font-family: var(--font-sans);
   font-size: 0.78rem;
   white-space: nowrap;
   cursor: pointer;
 }
-.guess-pill:hover {
+.guess-pill--rf {
+  border: 1px solid #9FB4D0;
+  background: #E3EBF5;
+  color: #3D6491;
+}
+.guess-pill--rf:hover {
   background: #D4E0F0;
   border-color: #6E8CB4;
   color: #2C4F7A;
+}
+.guess-pill--bert {
+  border: 1px solid #9AC4A0;
+  background: #E4F1E6;
+  color: #357041;
+}
+.guess-pill--bert:hover {
+  background: #D3E8D7;
+  border-color: #6FA97A;
+  color: #275C32;
+}
+/* BERT column placeholder when the optional ML stack isn't installed —
+   hover shows the install hint. */
+.guess-cell-off {
+  color: var(--text-muted);
+  cursor: help;
 }
 
 .detect-badge {

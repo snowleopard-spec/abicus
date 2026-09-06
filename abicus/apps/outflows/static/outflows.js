@@ -146,6 +146,7 @@
     }
     if (!state.session || state.session.session_id !== sid) return;
     state.guesses = resp.guesses || {};
+    state.transformer = resp.transformer || { available: false, hint: null };
     renderForDateRange();
   }
 
@@ -793,10 +794,26 @@
       { key: "date", label: "Date" },
       { key: "description", label: "Description" },
       { key: "amount", label: "Amount" },
-      { label: "Guess" },
+      { label: "Guess (Rapidfuzz)" },
+      { label: "Guess (BERT)" },
       { key: "account", label: "Account" },
       { label: "", cls: "action-col" },
     ]));
+
+    // One pill per engine per row, same click-to-accept flow; the engines
+    // are told apart by colour (rapidfuzz blue, BERT green).
+    const guessPill = (rowIdx, g, cls, engine) => {
+      const pill = document.createElement("button");
+      pill.type = "button";
+      pill.className = `guess-pill ${cls}`;
+      pill.textContent = `≈ ${g.category}`;
+      pill.title =
+        `${engine} matched "${g.matched}" (score ${g.score}) — ` +
+        `click to add to transaction history as ${g.category}`;
+      pill.addEventListener("click", () => addToHistory(rowIdx, g.category));
+      return pill;
+    };
+
     const tbody = document.createElement("tbody");
     for (const r of sortPanelRows("unmapped", unmapped)) {
       const tr = document.createElement("tr");
@@ -805,20 +822,27 @@
         `<td class="desc-cell">${escapeHtml(String(r.description ?? ""))}</td>` +
         `<td class="amount">${fmtSGD.format(r.amount)}</td>`;
 
-      const guessCell = document.createElement("td");
-      const g = state.guesses[r._idx];
-      if (g) {
-        const pill = document.createElement("button");
-        pill.type = "button";
-        pill.className = "guess-pill";
-        pill.textContent = `≈ ${g.category}`;
-        pill.title =
-          `Matched "${g.matched}" (score ${g.score}) — ` +
-          `click to add to transaction history as ${g.category}`;
-        pill.addEventListener("click", () => addToHistory(r._idx, g.category));
-        guessCell.appendChild(pill);
+      const g = state.guesses[r._idx] || {};
+
+      const rfCell = document.createElement("td");
+      if (g.rapidfuzz) {
+        rfCell.appendChild(
+          guessPill(r._idx, g.rapidfuzz, "guess-pill--rf", "Rapidfuzz"),
+        );
       }
-      tr.appendChild(guessCell);
+      tr.appendChild(rfCell);
+
+      const bertCell = document.createElement("td");
+      if (g.transformer) {
+        bertCell.appendChild(
+          guessPill(r._idx, g.transformer, "guess-pill--bert", "BERT"),
+        );
+      } else if (state.transformer && !state.transformer.available) {
+        bertCell.className = "guess-cell-off";
+        bertCell.textContent = "—";
+        bertCell.title = state.transformer.hint || "Transformer engine unavailable.";
+      }
+      tr.appendChild(bertCell);
 
       const acctCell = document.createElement("td");
       acctCell.textContent = String(r.account ?? "");

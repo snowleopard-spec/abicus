@@ -54,12 +54,14 @@ CONFIG_PATH = Path(__file__).parent / "config" / "guess.yaml"
 
 DEFAULT_MIN_SCORE = 0.90
 DEFAULT_MIN_CANDIDATE_LENGTH = 5
+DEFAULT_EMBED_MIN_SCORE = 0.85  # transformer engine; calibrated at M7
 
 
 @dataclass(frozen=True)
 class GuessConfig:
     min_score: float = DEFAULT_MIN_SCORE
     min_candidate_length: int = DEFAULT_MIN_CANDIDATE_LENGTH
+    embed_min_score: float = DEFAULT_EMBED_MIN_SCORE
 
 
 def load_guess_config(path: Path = CONFIG_PATH) -> GuessConfig:
@@ -77,11 +79,16 @@ def load_guess_config(path: Path = CONFIG_PATH) -> GuessConfig:
         min_candidate_length=int(
             data.get("min_candidate_length", DEFAULT_MIN_CANDIDATE_LENGTH)
         ),
+        embed_min_score=float(
+            data.get("embed_min_score", DEFAULT_EMBED_MIN_SCORE)
+        ),
     )
     if not (0.0 < cfg.min_score <= 1.0):
         raise ValueError(f"{path.name}: min_score must be in (0, 1].")
     if cfg.min_candidate_length < 1:
         raise ValueError(f"{path.name}: min_candidate_length must be >= 1.")
+    if not (0.0 < cfg.embed_min_score <= 1.0):
+        raise ValueError(f"{path.name}: embed_min_score must be in (0, 1].")
     return cfg
 
 
