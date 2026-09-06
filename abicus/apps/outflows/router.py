@@ -63,6 +63,12 @@ PARSERS = {
     "Format F": parse_format_f,
 }
 
+# Format A's dynamic header scan (date/description/amount anywhere in the
+# first 30 rows) also matches Format F's row-0 manual-template header, so an
+# F file always try-parses as both. F is the stricter fingerprint — prefer
+# it. Any candidate pair not listed here stays ambiguous.
+DETECT_PRECEDENCE = {frozenset({"Format A", "Format F"}): "Format F"}
+
 SESSIONS: dict[str, dict] = {}
 
 api_router = APIRouter()
@@ -231,7 +237,10 @@ async def api_detect(file: UploadFile = File(...)):
             continue
         candidates.append(format_name)
 
-    detected = candidates[0] if len(candidates) == 1 else None
+    detected = (
+        candidates[0] if len(candidates) == 1
+        else DETECT_PRECEDENCE.get(frozenset(candidates))
+    )
 
     account = None
     if detected is not None:

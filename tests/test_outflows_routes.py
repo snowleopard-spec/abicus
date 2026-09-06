@@ -288,6 +288,34 @@ def test_detect_endpoint(app, monkeypatch):
     assert body["format"] == "Format C" and body["account"] is None
 
 
+def test_detect_manual_template_wins_over_format_a(app):
+    """Regression, with the REAL parsers (the stubbed test above can't see
+    parser overlap): a manual-template xlsx is accepted by both Format A's
+    30-row header scan and Format F's row-0 header, and the precedence
+    tie-break must resolve it to Format F instead of reporting ambiguous."""
+    import io
+
+    buf = io.BytesIO()
+    pd.DataFrame({
+        "date": ["2026-08-01", "2026-08-02"],
+        "description": ["NTUC", "KFC"],
+        "amount": [12.5, 8.0],
+        "category": ["Groceries", "Dining"],
+        "account": ["Manual", "Manual"],
+    }).to_excel(buf, index=False)
+
+    c = TestClient(app)
+    body = c.post(
+        "/api/outflows/detect",
+        files={"file": (
+            "manual.xlsx", buf.getvalue(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )},
+    ).json()
+    assert set(body["candidates"]) == {"Format A", "Format F"}
+    assert body["format"] == "Format F"
+
+
 def test_state_save_load_roundtrip(app, tmp_path, monkeypatch):
     """Save a session as a state file, list it, load it into a fresh
     session with df and UI state intact; delete it; reject traversal."""
