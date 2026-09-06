@@ -107,6 +107,12 @@
   margin-bottom: 0.3rem;
 }
 
+/* Backup destination path, right-aligned beneath the Back up DB button. */
+.db-backup-path {
+  text-align: right;
+  margin-top: -0.5rem;
+}
+
 /* "current" tag on the newest commit (the live DB state). */
 .hist-current {
   padding: 0.12rem 0.6rem;

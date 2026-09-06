@@ -544,6 +544,7 @@ def test_db_backup_endpoint(app, tmp_path, monkeypatch):
     assert body["rows"] == 1 and body["bytes"] > 0
     snap = tmp_path / "backups" / body["file"]
     assert snap.exists()
+    assert body["path"] == str(snap.resolve())
     rows = sqlite3.connect(snap).execute(
         "SELECT description FROM transactions"
     ).fetchall()

@@ -117,7 +117,10 @@ def dbedit_page(request: Request):
     return templates.TemplateResponse(
         request,
         "outflows/dbedit.html",
-        {"active": "outflows"},
+        {
+            "active": "outflows",
+            "backup_dir": str((db.DB_PATH.parent / "backups").resolve()),
+        },
     )
 
 

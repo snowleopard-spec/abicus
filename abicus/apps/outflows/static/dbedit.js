@@ -102,7 +102,7 @@
     }
     const kb = Math.max(1, Math.round(resp.bytes / 1024));
     toast(
-      `Backup saved: ${resp.file} (${resp.rows} rows, ${kb} KB).`, "info",
+      `Backup saved: ${resp.path} (${resp.rows} rows, ${kb} KB).`, "info",
     );
   }
 
@@ -191,12 +191,6 @@
   // ---- Render ----
   function render() {
     const rows = filteredRows();
-    const total = rows.reduce((sum, r) => sum + (r.amount ?? 0), 0);
-    const filtered = rows.length !== state.rows.length;
-    $("db-summary").textContent =
-      `${rows.length} transaction${rows.length !== 1 ? "s" : ""}` +
-      (filtered ? ` of ${state.rows.length} in the database` : "") +
-      ` · ${fmtSGD.format(total)}`;
     $("db-empty").classList.toggle("hidden", state.rows.length > 0);
 
     const wrap = $("db-rows");

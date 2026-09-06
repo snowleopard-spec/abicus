@@ -208,6 +208,7 @@ def backup() -> dict:
         n = dest.execute("SELECT COUNT(*) FROM transactions").fetchone()[0]
     return {
         "file": dest_path.name,
+        "path": str(dest_path.resolve()),
         "rows": int(n),
         "bytes": dest_path.stat().st_size,
     }

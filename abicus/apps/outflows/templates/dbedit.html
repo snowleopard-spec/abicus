@@ -41,7 +41,9 @@
       Back up DB
     </button>
   </div>
-  <div id="db-summary" class="caption"></div>
+  <div class="caption db-backup-path">
+    Backups are saved to <code>{{ backup_dir }}</code>
+  </div>
   <div id="db-rows" class="mini-table-wrap dbedit-table-wrap"></div>
   <div id="db-empty" class="banner banner-info hidden">
     The database is empty. Commit a session from Spending Review first.
