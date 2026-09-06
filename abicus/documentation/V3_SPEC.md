@@ -1,7 +1,7 @@
 # Spec — Abicus V3: DB commit history + transformer guess engine
 
-> **Status: not started** · Drafted 2026-09-05 · Target version **3.0.0**
-> (current: 2.1.2). This is a build contract for a fresh Claude Code
+> **Status: implemented — released as 3.0.0, 2026-09-06** · Drafted
+> 2026-09-05. This is a build contract for a fresh Claude Code
 > session, in the house style: resolved decisions up front, then numbered
 > verify-before-continue milestones, each sized to one ~15-minute session
 > and ending with the app usable. Do not start a milestone before the

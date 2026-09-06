@@ -4,7 +4,57 @@ Newest release at the top. Versions correspond to git tags on the repo.
 
 ---
 
-## Unreleased
+## 3.0.0 — 2026-09-06
+
+The V3 release (documentation/V3_SPEC.md): a git-backed commit history
+for the transactions database, and a second, meaning-based guess engine
+running beside the rapidfuzz one.
+
+*Feature A — DB commit history.* Every write to `transactions.db`
+(upsert, clear, and the three row-level edits) now dumps the table as
+deterministic SQL and commits it into a nested, local-only git repo at
+`data/history/` — no remote, ever. The DB Edit tab gains a History
+panel: commit list with per-commit change summaries and a row-count
+column, an inline view of exactly which rows a write touched, and a
+Roll back action (confirm dialog; the current state is snapshotted
+first, and every rollback lands as a new `restore → <sha>` commit, so
+history stays linear and nothing is ever lost). A pre-existing DB gets
+a baseline commit before its first hooked write. The same operations
+are scriptable via `scripts/outflows_history.py` (list / diff /
+restore). Restore drill (M3): on a copy of the real 1,494-row DB,
+`clear()` followed by `restore` round-tripped the file byte-identically,
+with the snapshot and restore commits in place. If git is missing or a
+checkpoint fails, the write itself always stands — the history layer
+warns loudly and steps aside.
+
+*Feature B — transformer guess engine.* A second guesser matches
+unmapped descriptions by meaning: `BAAI/bge-small-en-v1.5`
+(sentence-transformers) embeds the shared description→category corpus,
+cosine nearest-neighbour picks the guess, and corpus embeddings are
+cached on disk keyed by content. The Unmapped panel now shows two
+columns — Guess (Rapidfuzz) in blue and Guess (BERT) in green — each
+pill click-to-accept as before; nothing is ever auto-applied. The ML
+stack is an optional extra (`pip install -e '.[suggest]'`, pinned);
+without it the BERT column degrades to a hint, and rapidfuzz is
+unaffected. Calibration (leave-one-out, corpus n=983, 2026-09-06):
+`embed_min_score` 0.90 → **97.7% precision at 78.9% coverage**;
+rapidfuzz on the same corpus: 84.5%/72.7% at its 0.90 default (77.5%/
+93.6% at the deployed 0.80). The transformer engine dominated at every
+threshold tested. No model training anywhere — bge-small is used off
+the shelf.
+
+*DB Edit polish.* A Back up DB button snapshots the database into
+`data/backups/` via SQLite's online-backup API (destination shown on
+hover, full path in the confirmation toast). The explainer captions and
+the transactions/total summary line are gone.
+
+*Statement detection.* A manual-template upload no longer reports
+ambiguous: Format A's header scan accepts every Format F file, so that
+known tie now resolves to the stricter Format F fingerprint.
+
+---
+
+## Unreleased (2.1 line)
 
 *Breakdown: exclude-heavy toggle replaces All/None.* The month picker's
 All/None shortcut buttons are gone (individual month chips remain); in
