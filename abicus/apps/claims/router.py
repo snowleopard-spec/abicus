@@ -76,6 +76,13 @@ def _claim_form_payload(
         if isinstance(v, bool):
             return v
         return str(v).lower() in ("1", "true", "on", "yes")
+    currency = currency or "SGD"
+    if currency != "SGD":
+        # V3.1 R3: claims are SGD-only, enforced on both create and update.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Abicus claims are SGD-only; got currency {currency!r}.",
+        )
     return {
         "claimant": claimant,
         "institution": institution,
