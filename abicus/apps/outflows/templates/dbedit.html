@@ -37,12 +37,9 @@
       <input type="date" id="filter-to">
     </label>
     <button type="button" id="db-backup-btn" class="hist-btn db-backup-btn"
-            title="Save a snapshot of the database to data/backups/">
+            title="Save a snapshot of the database to {{ backup_dir }}">
       Back up DB
     </button>
-  </div>
-  <div class="caption db-backup-path">
-    Backups are saved to <code>{{ backup_dir }}</code>
   </div>
   <div id="db-rows" class="mini-table-wrap dbedit-table-wrap"></div>
   <div id="db-empty" class="banner banner-info hidden">
