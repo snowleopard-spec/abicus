@@ -125,7 +125,10 @@ def get_state(as_of: date | None = None):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="loan.json missing")
     when = as_of or date.today()
-    state = simulate_state(when, loan)
+    try:
+        state = simulate_state(when, loan)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"as_of": when.isoformat(), "currency": loan.currency, **_stringify_state(state)}
 
 
