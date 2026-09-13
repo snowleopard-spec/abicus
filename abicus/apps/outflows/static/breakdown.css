@@ -189,6 +189,60 @@
   .breakdown-grid { grid-template-columns: 1fr; }
 }
 
+/* ---------- Category-type shading & filter chips ---------- */
+/* Types come from config/categories.txt (F/D/V/E/NA). The four accents
+   are CVD-validated categorical slots (blue/aqua/orange/violet); tiles
+   get a light tint of the same hue. Type is never colour-alone: chips
+   carry text labels and each tinted tile shows an F/V/D/E badge. */
+.type-picker { margin-top: 0.5rem; }
+
+.type-chip--F  { --chip-accent: #2A78D6; --chip-tint: #EBF2FB; }
+.type-chip--V  { --chip-accent: #1BAF7A; --chip-tint: #E7F6EF; }
+.type-chip--D  { --chip-accent: #EB6834; --chip-tint: #FDEFE7; }
+.type-chip--E  { --chip-accent: #4A3AA7; --chip-tint: #EEECF8; }
+.type-chip--NA { --chip-accent: #A59988; --chip-tint: var(--bg-app); }
+
+.type-chip-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 0.35rem;
+  flex-shrink: 0;
+  background: var(--chip-accent);
+}
+.type-chip:not(.is-on) .type-chip-dot { opacity: 0.35; }
+/* Override the month-chip brown on-state with the type's own tint.
+   Declared after .month-chip rules so the same-specificity tie breaks
+   this way; :hover repeated to outrank .month-chip.is-on:hover. */
+.type-chip.is-on,
+.type-chip.is-on:hover {
+  background: var(--chip-tint);
+  border-color: var(--chip-accent);
+  color: var(--text-primary);
+}
+
+.breakdown-tile--F { background: #EBF2FB; }
+.breakdown-tile--V { background: #E7F6EF; }
+.breakdown-tile--D { background: #FDEFE7; }
+.breakdown-tile--E { background: #EEECF8; }
+
+/* Small letter badge in a tinted tile's header (title attr spells it out). */
+.breakdown-tile-type {
+  flex-shrink: 0;
+  align-self: center;
+  padding: 0.05rem 0.35rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: rgba(255, 255, 255, 0.55);
+}
+.breakdown-tile-type--F { color: #1D5296; border-color: #2A78D6; }
+.breakdown-tile-type--V { color: #0E7A55; border-color: #1BAF7A; }
+.breakdown-tile-type--D { color: #A4441C; border-color: #EB6834; }
+.breakdown-tile-type--E { color: #4A3AA7; border-color: #4A3AA7; }
+
 /* ---------- Per-bar transaction detail box ---------- */
 /* Bars are clickable — they open the transactions box below the grid. */
 .breakdown-tile-chart g.point path { cursor: pointer; }

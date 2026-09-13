@@ -21,11 +21,25 @@
   // hides). Names must match config/categories.txt exactly.
   const EXCLUDABLE_CATS = ["Rent", "Education", "Holidays", "Exceptional"];
 
+  // Category types from config/categories.txt. Tiles are tinted by type
+  // and the type chips filter them; categories missing from the map
+  // (e.g. Uncategorised) count as NA.
+  const TYPE_ORDER = ["F", "V", "D", "E", "NA"];
+  const TYPE_LABELS = {
+    F: "Fixed", V: "Variable", D: "Discretionary", E: "Extraordinary", NA: "N/A",
+  };
+
   const state = {
-    data: null,             // {months, by_category, lifetime_totals}
+    data: null,             // {months, by_category, lifetime_totals, category_types}
     selectedMonths: new Set(),
     excludeHeavy: false,    // header toggle: drop EXCLUDABLE_CATS from view
+    activeTypes: null,      // Set of visible type codes; null = no type data
+    presentTypes: [],       // type codes that occur in the data, TYPE_ORDER order
   };
+
+  function typeOf(cat) {
+    return (state.data.category_types || {})[cat] || "NA";
+  }
 
   // ---- Boot ----
   async function boot() {
@@ -50,6 +64,7 @@
     state.data = data;
     state.selectedMonths = new Set(data.months);
     renderChips();
+    renderTypeChips();
     document.getElementById("breakdown-controls").classList.remove("hidden");
     document.getElementById("breakdown-grid").classList.remove("hidden");
     wireShortcuts();
@@ -127,6 +142,41 @@
     }
   }
 
+  // ---- Type filter chips ----
+  // One chip per type present in the data, all on by default. Each chip
+  // doubles as the legend for the tile tint of that type.
+  function renderTypeChips() {
+    const row = document.getElementById("type-picker");
+    if (!row) return;
+    if (!state.data.category_types) return; // pre-types payload: leave hidden
+
+    const cats = Object.keys(state.data.by_category || {});
+    state.presentTypes = TYPE_ORDER.filter((t) => cats.some((c) => typeOf(c) === t));
+    state.activeTypes = new Set(state.presentTypes);
+
+    const wrap = document.getElementById("type-chips");
+    wrap.innerHTML = "";
+    for (const t of state.presentTypes) {
+      const label = document.createElement("label");
+      label.className = `month-chip type-chip type-chip--${t} is-on`;
+      label.innerHTML =
+        `<input type="checkbox" checked data-type="${t}">` +
+        `<span class="type-chip-dot"></span>${TYPE_LABELS[t]}`;
+      label.querySelector("input").addEventListener("change", (e) => {
+        if (e.target.checked) {
+          state.activeTypes.add(t);
+          label.classList.add("is-on");
+        } else {
+          state.activeTypes.delete(t);
+          label.classList.remove("is-on");
+        }
+        redraw();
+      });
+      wrap.appendChild(label);
+    }
+    row.classList.remove("hidden");
+  }
+
   function wireShortcuts() {
     document.getElementById("exclude-heavy").addEventListener("change", (e) => {
       state.excludeHeavy = e.target.checked;
@@ -147,7 +197,9 @@
     // Compute per-category totals restricted to selected months.
     // Categories with $0 in the selection get filtered out — no point rendering an empty tile.
     const catNames = Object.keys(byCat).filter(
-      (c) => !(state.excludeHeavy && EXCLUDABLE_CATS.includes(c)),
+      (c) =>
+        !(state.excludeHeavy && EXCLUDABLE_CATS.includes(c)) &&
+        (state.activeTypes === null || state.activeTypes.has(typeOf(c))),
     );
     const catTotals = {};
     for (const cat of catNames) {
@@ -179,10 +231,16 @@
       const pct = visibleGrand > 0 ? (catTotals[cat] / visibleGrand) * 100 : 0;
       const pctLabel = pct >= 0.5 ? `${Math.round(pct)}%` : "<1%";
       const tile = document.createElement("div");
-      tile.className = "breakdown-tile";
+      const t = typeOf(cat);
+      const typed = state.activeTypes !== null && t !== "NA";
+      tile.className = "breakdown-tile" + (typed ? ` breakdown-tile--${t}` : "");
+      const typeBadge = typed
+        ? `<span class="breakdown-tile-type breakdown-tile-type--${t}" title="${TYPE_LABELS[t]}">${t}</span>`
+        : "";
       tile.innerHTML = `
         <div class="breakdown-tile-header">
           <span class="breakdown-tile-title">${escapeHtml(cat)}</span>
+          ${typeBadge}
           <span class="breakdown-tile-pct" title="${pct.toFixed(1)}% of expenditure across the selected months">${pctLabel}</span>
           <span class="breakdown-tile-amount">${fmtSGD.format(catTotals[cat])}</span>
         </div>
@@ -246,10 +304,14 @@
     const exclNote = state.excludeHeavy
       ? ` · excl. ${EXCLUDABLE_CATS.join("/")}`
       : "";
+    const typeNote =
+      state.activeTypes !== null && state.activeTypes.size < state.presentTypes.length
+        ? ` · ${state.presentTypes.filter((t) => state.activeTypes.has(t)).map((t) => TYPE_LABELS[t]).join("/") || "no types"} only`
+        : "";
 
     tile.innerHTML = `
       <div class="breakdown-tile-header">
-        <span class="breakdown-tile-title">Monthly total (${months.length} month${months.length === 1 ? "" : "s"}, ${categories.length} categor${categories.length === 1 ? "y" : "ies"}${exclNote})</span>
+        <span class="breakdown-tile-title">Monthly total (${months.length} month${months.length === 1 ? "" : "s"}, ${categories.length} categor${categories.length === 1 ? "y" : "ies"}${exclNote}${typeNote})</span>
         <span class="breakdown-tile-amount">${fmtSGDprecise.format(grandTotal)}</span>
       </div>
       <div class="breakdown-tile-chart"></div>
@@ -339,9 +401,13 @@
 
     let rows = data.rows || [];
     // Keep the "All categories" detail box consistent with the total bar
-    // that was clicked — excluded categories stay out of it too.
+    // that was clicked — excluded categories and filtered-out types stay
+    // out of it too.
     if (cat === null && state.excludeHeavy) {
       rows = rows.filter((r) => !EXCLUDABLE_CATS.includes(r.category));
+    }
+    if (cat === null && state.activeTypes !== null) {
+      rows = rows.filter((r) => state.activeTypes.has(typeOf(r.category)));
     }
     detail.rows = rows;
     detail.filter = { category: "All", account: "All", search: "" };

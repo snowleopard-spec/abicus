@@ -31,6 +31,7 @@ from datetime import datetime
 from pathlib import Path
 
 from abicus.apps.outflows import db
+from abicus.apps.outflows.categories import load_category_types
 
 _APP_DIR = Path(__file__).parent
 _SHELL_CSS_DIR = _APP_DIR.parents[1] / "shell" / "static" / "css"
@@ -67,6 +68,10 @@ _BODY_SKELETON = """
       <span class="exclude-toggle-track"><span class="exclude-toggle-thumb"></span></span>
       <span class="exclude-toggle-text">Excl. Rent · Education · Holidays · Exceptional</span>
     </label>
+  </div>
+  <div id="type-picker" class="month-picker type-picker hidden">
+    <span class="month-picker-label">Types:</span>
+    <div id="type-chips" class="month-chips"></div>
   </div>
 </div>
 
@@ -128,7 +133,9 @@ window.api = {
 
 def build_breakdown_html() -> str:
     rows = db.load_all_transactions()
-    breakdown = db.load_monthly_breakdown()
+    # Same payload shape as the live /api/outflows/breakdown endpoint, so
+    # the embedded breakdown.js sees identical data (incl. type shading).
+    breakdown = {**db.load_monthly_breakdown(), "category_types": load_category_types()}
 
     css = "\n".join(
         p.read_text()

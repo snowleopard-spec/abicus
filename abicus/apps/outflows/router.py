@@ -22,7 +22,7 @@ from abicus.apps.outflows.build_mapping import (
     load_mapping_table,
     save_mapping_table,
 )
-from abicus.apps.outflows.categories import load_categories
+from abicus.apps.outflows.categories import load_categories, load_category_types
 from abicus.apps.outflows.guess import best_guess, build_corpus, load_guess_config
 from abicus.apps.outflows.categorise import (
     UNCATEGORISED,
@@ -1033,8 +1033,9 @@ def api_db_commit(session_id: str, body: CommitBody):
 @api_router.get("/breakdown")
 def api_breakdown():
     """Return per-category, per-month spending totals from the DB, sorted
-    by lifetime total descending for tile ordering."""
-    return db.load_monthly_breakdown()
+    by lifetime total descending for tile ordering, plus the
+    category→type map (F/D/V/E/NA) for tile shading and type filters."""
+    return {**db.load_monthly_breakdown(), "category_types": load_category_types()}
 
 
 @api_router.get("/breakdown/html")

@@ -653,6 +653,30 @@ def test_breakdown_transactions(app, tmp_path, monkeypatch):
     assert r.status_code == 400
 
 
+def test_breakdown_includes_category_types(app, tmp_path, monkeypatch):
+    """The breakdown payload carries the category→type map (F/D/V/E/NA)
+    alongside the per-month totals, for tile shading and type filters."""
+    from abicus.apps.outflows import db
+    from abicus.apps.outflows import router as outflows
+
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "transactions.db")
+    db.upsert([
+        {"date": "2026-08-01", "description": "NTUC", "amount": 12.5,
+         "category": "Groceries", "account": "A", "matched_pattern": None,
+         "source_file": "f.xlsx"},
+    ])
+    monkeypatch.setattr(
+        outflows, "load_category_types", lambda: {"Groceries": "V", "Rent": "F"}
+    )
+
+    c = TestClient(app)
+    r = c.get("/api/outflows/breakdown")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["category_types"] == {"Groceries": "V", "Rent": "F"}
+    assert body["by_category"]["Groceries"]["2026-08"] == 12.5
+
+
 def test_breakdown_html_export(app, tmp_path, monkeypatch):
     """The self-contained export embeds the DB rows and vendored libs and
     references no external scripts or stylesheets."""
@@ -674,6 +698,8 @@ def test_breakdown_html_export(app, tmp_path, monkeypatch):
     html = r.text
     assert "window.__ABICUS_EXPORT__" in html
     assert "NTUC" in html
+    # The embedded payload mirrors the live endpoint, types included.
+    assert '"category_types"' in html
     assert "plotly.js v2.35.2" in html
     assert "Tabulator v6.3.1" in html
     # Self-contained: no external script/link tags at all.
