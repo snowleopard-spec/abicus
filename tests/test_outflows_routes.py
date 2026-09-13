@@ -668,6 +668,9 @@ def test_breakdown_includes_category_types(app, tmp_path, monkeypatch):
     monkeypatch.setattr(
         outflows, "load_category_types", lambda: {"Groceries": "V", "Rent": "F"}
     )
+    monkeypatch.setattr(
+        outflows, "load_breakdown_config", lambda: {"show_exclude_toggle": False}
+    )
 
     c = TestClient(app)
     r = c.get("/api/outflows/breakdown")
@@ -675,6 +678,29 @@ def test_breakdown_includes_category_types(app, tmp_path, monkeypatch):
     body = r.json()
     assert body["category_types"] == {"Groceries": "V", "Rent": "F"}
     assert body["by_category"]["Groceries"]["2026-08"] == 12.5
+    assert body["config"] == {"show_exclude_toggle": False}
+
+
+def test_breakdown_config_loader(tmp_path, monkeypatch):
+    """Missing file, bad JSON, or a wrong-typed value all fall back to the
+    default; a valid false is honoured."""
+    import json as _json
+
+    from abicus.apps.outflows import breakdown_config
+
+    cfg_path = tmp_path / "breakdown.json"
+    monkeypatch.setattr(breakdown_config, "_CONFIG_PATH", cfg_path)
+
+    assert breakdown_config.load_breakdown_config() == {"show_exclude_toggle": True}
+
+    cfg_path.write_text("not json {")
+    assert breakdown_config.load_breakdown_config() == {"show_exclude_toggle": True}
+
+    cfg_path.write_text(_json.dumps({"show_exclude_toggle": "no"}))
+    assert breakdown_config.load_breakdown_config() == {"show_exclude_toggle": True}
+
+    cfg_path.write_text(_json.dumps({"show_exclude_toggle": False}))
+    assert breakdown_config.load_breakdown_config() == {"show_exclude_toggle": False}
 
 
 def test_breakdown_html_export(app, tmp_path, monkeypatch):

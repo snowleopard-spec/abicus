@@ -178,7 +178,15 @@
   }
 
   function wireShortcuts() {
-    document.getElementById("exclude-heavy").addEventListener("change", (e) => {
+    const checkbox = document.getElementById("exclude-heavy");
+    // config.show_exclude_toggle=false hides the exclude toggle entirely
+    // (excludeHeavy then stays false). Absent config — an old export —
+    // keeps it visible.
+    if ((state.data.config || {}).show_exclude_toggle === false) {
+      checkbox.closest(".exclude-toggle").classList.add("hidden");
+      return;
+    }
+    checkbox.addEventListener("change", (e) => {
       state.excludeHeavy = e.target.checked;
       redraw();
     });

@@ -31,6 +31,7 @@ from datetime import datetime
 from pathlib import Path
 
 from abicus.apps.outflows import db
+from abicus.apps.outflows.breakdown_config import load_breakdown_config
 from abicus.apps.outflows.categories import load_category_types
 
 _APP_DIR = Path(__file__).parent
@@ -135,7 +136,11 @@ def build_breakdown_html() -> str:
     rows = db.load_all_transactions()
     # Same payload shape as the live /api/outflows/breakdown endpoint, so
     # the embedded breakdown.js sees identical data (incl. type shading).
-    breakdown = {**db.load_monthly_breakdown(), "category_types": load_category_types()}
+    breakdown = {
+        **db.load_monthly_breakdown(),
+        "category_types": load_category_types(),
+        "config": load_breakdown_config(),
+    }
 
     css = "\n".join(
         p.read_text()
